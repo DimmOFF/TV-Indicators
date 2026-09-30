@@ -1,0 +1,3091 @@
+// ADDED: Standard Deviation Projection from confirmed C2 extreme to latest opposite LTF structure swing.
+// FIXED: Bullish IC-CISD dot now uses a transparent upward-anchored label so it stays below the protected-low wick without overlapping while zooming.
+// COMPILE FIX: Visual setting resolvers moved below their input declarations.
+// ADDED: Independent IC-CISD dot size control.
+// ADDED: Main CISD line style and width controls.
+// FIXED: IC-CISD candidate is rebuilt only by the opposing delivery that owns the latest protected extreme.
+// FIXED: IC-CISD line starts on its actual delivery-origin candle; dot stays on the protected candle.
+// UPDATED: IC-CISD chart text and Protected High/Low visuals removed.
+// UPDATED: IC-CISD dot is placed on the exact candle that owns the protected swing, at that candle's high/low.
+// UPDATED: IC-CISD line style setting added.
+// ADDED: Calculated Bars setting with a default calculation window of 5000 bars.
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=6
+// FIXED: Only the latest xC2/xC2+PSP label is retained globally across bullish and bearish invalidations.
+// FIXED: xC2/xC2+PSP has exclusive display priority over standalone C1 PSP on the same candle.
+// FIXED: xC2+PSP strictly represents the failed C2 own saved PSP.
+// UPDATED: LTF C1 PSP confirmation displays only "PSP"; C1 prefix removed.
+// FIXED: LTF C1 PSP label now uses absolute HTF time anchoring, preventing HTF-only PSP display.
+// UPDATED: Floating HTF PSP text now follows Category 02 Chart Text Size.
+// ADDED: Category 02 Chart Text Size control for main-chart text except SMT/C.SMT.
+// UPDATED: Main-chart C3/C4 text is left-anchored at the opening LTF bar instead of centered in the HTF candle interval.
+// FIXED: xC4 requires a confirmed LTF candle close through C3 EQ; live intrabar price crossings no longer invalidate C4.
+// UPDATED: xC4 now invalidates only when an LTF candle closes through the fixed C3 equilibrium during the C4 HTF candle. Wick-only and legacy midpoint/defense xC4 rules removed.
+// CLEANUP: Removed verified dead code only; active PSP/SMT/C.SMT/C2/C3/C4/CISD/HTF behavior remains unchanged.
+// FIXED: Live SMT and C.SMT invalidation clears floating HTF state before UI rendering.
+// FIXED: No settings toggle is required to remove an invalidated HTF SMT line/text.
+// FRESH MIRROR BUILD: Floating HTF PSP/SMT is driven by the same live state as the main chart.
+// PSP vertical placement is mirrored from the chart source: above-high or below-low, never candle-color based.
+// SMT state, anchors, symbol text, appearance and removal refresh on the same real-time update as the chart.
+// FIXED: C3/C4 text is horizontally centered in its HTF candle interval while vertical placement follows directional swing high/low.
+// FIXED: Bearish C3/C4 text follows swing high; bullish C3/C4 text follows swing low and freezes after HTF completion. IC-CISD remains removed.
+// FIXED: Bearish C3/C4 text displays above its EQ line; bullish C3/C4 text displays below its EQ line.
+// FIXED: On C4 invalidation, C4 EQ/open/fill assembly is removed and the C4 label is preserved as red xC4.
+// UPDATED: Floating HTF candle equilibrium line shifted one additional step right, two total steps from its original position.
+// FIXED: Floating HTF candle equilibrium line shifted exactly one chart step to the right.
+// FIXED: C3/C4 labels now use the exact opening candle bar_index. Bullish labels remain below open and bearish labels remain above open.
+// FIXED: Bullish C3/C4 text prints below opening price; bearish C3/C4 text prints above opening price, while remaining left-anchored.
+// FIXED: Dynamic C3/C4 Open, EQ and fill now include the full closing width of the last LTF bar, preventing 1m/5m/etc early cutoff.
+// FIXED: C3/C4 text is anchored on the left side of the opening candle at its opening price.
+// FIXED: C3/C4 text is anchored beside the opening candle at its opening price and no longer moves with dynamic lines/fills.
+// UPDATED: C3/C4 EQ, opening-price lines and Open-EQ fills now extend dynamically with each printed chart candle.
+// ADDED: Independent color/opacity fill between each C3/C4 opening-price line and its EQ line.
+// UPDATED: Removed C3/C4 0.25 and 0.75 quartiles. Each C3/C4 candle is now marked only at its opening price.
+// UPDATED: Dedicated History control moved from 07. Floating HTF Candles to 02. Setup Controls.
+// UPDATED: Floating HTF candle Count and model History remain independent controls.
+// ADDED: Dedicated History input controls C2/PSP/C3/C4/SMT/xC2/EQ/quartile retention.
+// COMPILE FIX: History input is declared before all history-dependent variables.
+// Increasing or decreasing HTF Count recalculates C2/PSP/C3/C4/SMT/xC2/EQ/quartile history to the same window.
+// FIXED: Visible HTF PSP text uses the same PSP state as the tooltip and cannot be suppressed by stale C3/C4 flags.
+// FIXED: Confirmed and live C2 role assignment clears stale C3/C4 ownership on the same HTF candle.
+// COMPILE FIX: HTFMark constructor uses named fields to prevent positional type mismatch CE10123.
+// UPDATED: HTF tooltip shows the correlated asset name responsible for PSP.
+// UPDATED: Floating HTF hover tooltip covers the complete candle body and wick using multiple invisible hover targets.
+// UPDATED: Floating HTF hover tooltip shows only PSP and SMT information.
+// FIXED: Confirmed C2 PSP status is saved permanently with its model and used later for xC2+PSP.
+// FIXED: xC2 is created only from a previously CONFIRMED C2 stored in manipulation history.
+// A sweep candidate that closes invalid before C2 confirmation is deleted and never becomes xC2.
+// FIXED: Floating HTF candles display only PSP text, never xC2, xC2+PSP, C1 PSP, or C2 PSP.
+// FIXED: LTF xC2/xC2+PSP labels remain restricted to the original confirmed C2 candle.
+// FIXED: HTF xC2/xC2+PSP is restricted to the original C2 candle and can never overwrite C3 or C4 roles.
+// FIXED: Floating HTF candle mirrors LTF invalidation text as xC2 or xC2+PSP.
+// FIXED: xC2 labels synchronize retroactively when the same candle later confirms as C1 PSP.
+// FIXED: Every genuine C2 invalidation path preserves the LTF label as xC2 or xC2+PSP.
+// FIXED: LTF xC2 label becomes xC2+PSP when that invalidated C2 candle is the new C1 and has C1 PSP.
+// HTF C1/C2 PSP rendering remains unchanged.
+// FIXED: Model-role ownership prevents one HTF candle from displaying both C1 PSP and C2 PSP.
+// Latest confirmed model assigns one exclusive PSP role per HTF candle.
+// FIXED: C1 PSP and C2 PSP use strict, separate HTF timestamps.
+// UPDATED: C1 PSP now renders on both the main chart and floating HTF candle.
+// UPDATED: Complete TTrades-aligned C1 + C2 PSP closure-disagreement engine.
+// C1 PSP is confirmed only after a valid C2 model confirms; C2 PSP keeps live preview and final confirmation.
+// UPDATED: C3/C4 fill color inputs fixed and duplicate Fill text removed. Selected fill colors now apply directly to all quartile zones.
+// REMOVED: Bull C3, Bull C4, Bear C3, Bear C4 obsolete color boxes.
+// ADDED: Optional floating HTF candle equilibrium line with color, width, and style controls.
+// FIXED: HTF EQ style identifier declaration-order compile error.
+// REMOVED: C2 Bull/Bear border color, transparency, width, and style inputs; C2 boxes are fill-only.
+// FIXED: HTF EQ marker now uses a foreground zero-height box, so every displayed candle shows EQ above its body.
+// FIXED: Strict CSMT C2->C3 divergence: chart holds C2 extreme while correlated asset takes its own C2 extreme.
+// ADDED: User-selectable number of latest HTF open connector lines.
+// ADDED: Independent menu toggles for HTF interval labels and HTF-candle SMT text
+// ADDED: Group-centred HTF timer with Top/Bottom/Both position and size controls
+// FIXED: Robust C2/C3/C4/PSP mapping and visible per-candle HTF marks
+// FIXED: XC2 appears only after C2 candle closes invalid; XC4 invalidation text removed
+// FIXED: Restored truncated Bullish Sweep Update logic
+// FIXED: SMT Lines now map to the HTF floating UI candles
+// FIXED: 1-minute delay on HTF candle text marks eliminated by enforcing end-of-script UI drawing and precise time anchoring
+
+// ==========================================================
+// LOCAL ASSET CORRELATION UTILS REPLACEMENT (FULLY SEPARATED)
+// ==========================================================
+type CorrConfig
+    string secondary
+    string tertiary
+    bool invertSecondary
+    bool invertTertiary
+
+resolveCurrentChart() =>
+    string sec = ""
+    string ter = ""
+    bool invSec = false
+    bool invTer = false
+    
+    t = syminfo.ticker
+    p = syminfo.prefix + ":" 
+
+    if str.contains(t, "BANKNIFTY")
+        sec := "NSE:NIFTY"
+        ter := "NSE:FINNIFTY"
+    else if str.contains(t, "FINNIFTY")
+        sec := "NSE:NIFTY"
+        ter := "NSE:BANKNIFTY"
+    else if str.contains(t, "NIFTY")
+        sec := "NSE:BANKNIFTY"
+        ter := "NSE:FINNIFTY"
+    else if str.contains(t, "SENSEX")
+        sec := "NSE:NIFTY"
+        ter := "NSE:BANKNIFTY"
+
+    else if str.contains(t, "EURCAD")
+        sec := p + "GBPCAD"
+        ter := p + "NZDCAD"
+        invSec := true
+    else if str.contains(t, "GBPCAD")
+        sec := p + "EURCAD"
+        ter := p + "GBPNZD"
+        invSec := false
+    else if str.contains(t, "GBPAUD")
+        sec := p + "GBPNZD"
+        ter := p + "EURAUD"
+        invSec := false
+    else if str.contains(t, "EURJPY")
+        sec := p + "GBPJPY"
+        ter := p + "USDJPY"
+        invSec := false
+    else if str.contains(t, "EURAUD")
+        sec := p + "EURNZD"
+        ter := p + "GBPAUD"
+        invSec := false
+    else if str.contains(t, "6E") or str.contains(t, "EURUSD")
+        sec := p + "GBPUSD"
+        ter := "TVC:DXY"
+        invSec := true
+    else if str.contains(t, "6B") or str.contains(t, "GBPUSD")
+        sec := p + "EURUSD"
+        ter := "TVC:DXY"
+        invSec := true
+    else if str.contains(t, "6A") or str.contains(t, "AUDUSD")
+        sec := p + "NZDUSD"
+        ter := "TVC:DXY"
+        invSec := true
+    else if str.contains(t, "6N") or str.contains(t, "NZDUSD")
+        sec := p + "AUDUSD"
+        ter := "TVC:DXY"
+        invSec := true
+    else if str.contains(t, "USDCHF")
+        sec := p + "EURUSD"
+        ter := p + "GBPUSD"
+        invSec := true
+    else if str.contains(t, "USDCAD")
+        sec := p + "USDCHF"
+        ter := "TVC:DXY"
+        invSec := true
+    else if str.contains(t, "GBPJPY")
+        sec := p + "EURJPY"
+        ter := p + "CADJPY"
+        invSec := true
+    else if str.contains(t, "6J") or str.contains(t, "USDJPY")
+        sec := p + "USDCHF"
+        ter := "TVC:DXY"
+    else if str.contains(t, "GC")  
+        sec := "COMEX:SI1!"        
+        ter := "TVC:DXY"
+        invTer := true
+    else if str.contains(t, "SI")  
+        sec := "COMEX:GC1!"        
+        ter := "TVC:DXY"
+        invTer := true
+    else if str.contains(t, "CL")  
+        sec := "NYMEX:NG1!"        
+        ter := "TVC:DXY"
+    else if str.contains(t, "NG")  
+        sec := "NYMEX:CL1!"        
+        ter := "TVC:DXY"
+    else if str.contains(t, "XAU")
+        sec := p + "XAGUSD"
+        ter := p + "COPPER"
+        invTer := true
+    else if str.contains(t, "GOLD")
+        sec := p + "SILVER"
+        ter := p + "COPPER"
+        invTer := true
+    else if str.contains(t, "XAG")
+        sec := p + "XAUUSD"
+        ter := p + "COPPER"
+        invTer := true
+    else if str.contains(t, "SILVER")
+        sec := p + "GOLD"
+        ter := p + "COPPER"
+        invTer := true
+    else if str.contains(t, "USOIL")
+        sec := p + "UKOIL"         
+        ter := "TVC:DXY"           
+    else if str.contains(t, "UKOIL")
+        sec := p + "USOIL"         
+        ter := "TVC:DXY"           
+    else if str.contains(t, "BTC")
+        sec := p + "ETHUSDT"
+        ter := p + "SOLUSDT"
+    else if str.contains(t, "ETH")
+        sec := p + "BTCUSDT"
+        ter := p + "SOLUSDT"
+    else if str.contains(t, "SOL")
+        sec := p + "BTCUSDT"
+        ter := p + "ETHUSDT"
+    else if str.contains(t, "XRP")
+        sec := p + "XLMUSDT"
+        ter := p + "SOLUSDT"
+    else if str.contains(t, "NQ") or str.contains(t, "MNQ")
+        sec := "CME_MINI:ES1!"
+        ter := "CBOT_MINI:YM1!"
+    else if str.contains(t, "ES") or str.contains(t, "MES")
+        sec := "CME_MINI:NQ1!"
+        ter := "CBOT_MINI:YM1!"
+    else if str.contains(t, "YM") or str.contains(t, "MYM")
+        sec := "CME_MINI:ES1!"
+        ter := "CME_MINI:NQ1!"
+    else if str.contains(t, "US100")
+        sec := p + "US500"
+        ter := p + "US30"
+    else if str.contains(t, "US500")
+        sec := p + "US100"
+        ter := p + "US30"
+    else if str.contains(t, "NAS100")
+        sec := p + "SPX500"
+        ter := p + "US30"
+    else if str.contains(t, "SPX") or str.contains(t, "SPX500")
+        sec := p + "NAS100"
+        ter := p + "US30"
+    else if str.contains(t, "US30") or str.contains(t, "DJI")
+        sec := p + "US500"
+        ter := p + "US100"
+
+    CorrConfig.new(sec, ter, invSec, invTer)
+
+indicator("[KNIGHT♞] Ψ FM pro+", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, calc_bars_count=5000)
+
+// ==========================================================
+// 0. MARKET BIAS
+// ==========================================================
+grp_bias = "01. Directional Bias"
+bias_in = input.string("Neutral", "Directional Bias", options=["Neutral", "Bullish", "Bearish"], group=grp_bias, tooltip="Neutral: Shows all setups.\nBullish: Shows only setups from swept lows (Longs).\nBearish: Shows only setups from swept highs (Shorts).")
+
+allow_bull = bias_in == "Neutral" or bias_in == "Bullish"
+allow_bear = bias_in == "Neutral" or bias_in == "Bearish"
+
+// ==========================================================
+// 1. AMD + CISD + HTF + PSP
+// ==========================================================
+grp_core = "02. Setup Controls"
+grp_c2_style = "03. C2 Manipulation Style"
+grp_c3_levels = "04. C3 Levels: EQ + Opening Price"
+grp_c4_levels = "05. C4 Levels: EQ + Opening Price"
+grp_cisd = "06. CISD"
+grp_sd_projection = "07. Standard Deviation Projection"
+grp_htf_main = "08. Floating HTF Candles"
+grp_htf_eq = "09. Floating HTF Equilibrium"
+grp_htf_open = "10. HTF Open Connectors"
+grp_htf_timer = "11. HTF Labels and Timer"
+
+use_frac     = input.bool(true, "C2", inline="frac0", group=grp_core)
+use_psp      = input.bool(true, "PSP", inline="frac0", group=grp_core)
+use_dist     = input.bool(true, "C3", inline="frac0", group=grp_core)
+use_cont     = input.bool(true, "C4", inline="frac0", group=grp_core)
+htf_history_count = input.int(10, "History", minval=1, maxval=50, inline="frac_hist", group=grp_core, tooltip="Independent model history. Controls retained C2/PSP/C3/C4/SMT/xC2/EQ/quartile drawings without changing floating HTF candle Count.")
+int bull_history = htf_history_count
+int bear_history = htf_history_count
+col_c3_eq_line = input.color(color.new(#9c9c9c, 70), "C3 EQ", inline="c3eq", group=grp_c3_levels)
+c3_eq_width    = input.int(1, "Width", minval=1, maxval=10, inline="c3eq", group=grp_c3_levels)
+c3_eq_style_in = input.string("Solid", "Style", options=["Solid", "Dashed", "Dotted"], inline="c3eq", group=grp_c3_levels)
+col_c4_eq_line = input.color(color.new(#9c9c9c, 70), "C4 EQ", inline="c4eq", group=grp_c4_levels)
+c4_eq_width    = input.int(1, "Width", minval=1, maxval=10, inline="c4eq", group=grp_c4_levels)
+c4_eq_style_in = input.string("Solid", "Style", options=["Solid", "Dashed", "Dotted"], inline="c4eq", group=grp_c4_levels)
+// C3 bullish opening-price marker
+show_bull_c3_quartiles = input.bool(true, "Bull C3 Open", inline="bc3q1", group=grp_c3_levels)
+col_bull_c3_quartile = input.color(color.new(#2e2e2e, 70), "Line", inline="bc3q1", group=grp_c3_levels)
+bull_c3_quartile_width = input.int(1, "W", minval=1, maxval=10, inline="bc3q1", group=grp_c3_levels)
+bull_c3_quartile_style_in = input.string("Solid", "S", options=["Solid", "Dashed", "Dotted"], inline="bc3q1", group=grp_c3_levels)
+show_bull_c3_fill = input.bool(true, "Open-EQ Fill", inline="bc3fill", group=grp_c3_levels)
+col_bull_c3_fill = input.color(color.new(#808080, 90), "Color", inline="bc3fill", group=grp_c3_levels, tooltip="Fill between the Bull C3 opening price and C3 EQ. Opacity is controlled from this color picker.")
+// C3 bearish opening-price marker
+show_bear_c3_quartiles = input.bool(true, "Bear C3 Open", inline="rc3q1", group=grp_c3_levels)
+col_bear_c3_quartile = input.color(color.new(#2e2e2e, 70), "Line", inline="rc3q1", group=grp_c3_levels)
+bear_c3_quartile_width = input.int(1, "W", minval=1, maxval=10, inline="rc3q1", group=grp_c3_levels)
+bear_c3_quartile_style_in = input.string("Solid", "S", options=["Solid", "Dashed", "Dotted"], inline="rc3q1", group=grp_c3_levels)
+show_bear_c3_fill = input.bool(true, "Open-EQ Fill", inline="rc3fill", group=grp_c3_levels)
+col_bear_c3_fill = input.color(color.new(#808080, 90), "Color", inline="rc3fill", group=grp_c3_levels, tooltip="Fill between the Bear C3 opening price and C3 EQ. Opacity is controlled from this color picker.")
+// C4 bullish opening-price marker
+show_bull_c4_quartiles = input.bool(true, "Bull C4 Open", inline="bc4q1", group=grp_c4_levels)
+col_bull_c4_quartile = input.color(color.new(#2e2e2e, 70), "Line", inline="bc4q1", group=grp_c4_levels)
+bull_c4_quartile_width = input.int(1, "W", minval=1, maxval=10, inline="bc4q1", group=grp_c4_levels)
+bull_c4_quartile_style_in = input.string("Solid", "S", options=["Solid", "Dashed", "Dotted"], inline="bc4q1", group=grp_c4_levels)
+show_bull_c4_fill = input.bool(true, "Open-EQ Fill", inline="bc4fill", group=grp_c4_levels)
+col_bull_c4_fill = input.color(color.new(#808080, 90), "Color", inline="bc4fill", group=grp_c4_levels, tooltip="Fill between the Bull C4 opening price and C4 EQ. Opacity is controlled from this color picker.")
+// C4 bearish opening-price marker
+show_bear_c4_quartiles = input.bool(true, "Bear C4 Open", inline="rc4q1", group=grp_c4_levels)
+col_bear_c4_quartile = input.color(color.new(#2e2e2e, 70), "Line", inline="rc4q1", group=grp_c4_levels)
+bear_c4_quartile_width = input.int(1, "W", minval=1, maxval=10, inline="rc4q1", group=grp_c4_levels)
+bear_c4_quartile_style_in = input.string("Solid", "S", options=["Solid", "Dashed", "Dotted"], inline="rc4q1", group=grp_c4_levels)
+show_bear_c4_fill = input.bool(true, "Open-EQ Fill", inline="rc4fill", group=grp_c4_levels)
+col_bear_c4_fill = input.color(color.new(#808080, 90), "Color", inline="rc4fill", group=grp_c4_levels, tooltip="Fill between the Bear C4 opening price and C4 EQ. Opacity is controlled from this color picker.")
+// PSP uses strict correlated closure disagreement. No legacy reversal/reclaim mode.
+
+
+col_bull_bg      = input.color(color.new(#9e9e9e, 90), "Bull Box", inline="frac1", group=grp_c2_style)
+col_bull_line    = input.color(#9c9c9c, "Bull Line", inline="frac1", group=grp_c2_style)
+col_bear_bg      = input.color(color.new(#9e9e9e, 90), "Bear Box", inline="frac2", group=grp_c2_style)
+col_bear_line    = input.color(#9c9c9c, "Bear Line", inline="frac2", group=grp_c2_style)
+manip_txt_col = input.color(color.rgb(0, 0, 0), "Text", inline="frac3", group=grp_core)
+chart_text_size_in = input.string("Small", "Chart Text Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], inline="frac3", group=grp_core, tooltip="Adjusts main-chart C1 PSP, C2/xC2, C3, C4/xC4 and CISD text. SMT and C.SMT keep their separate text-size setting.")
+chart_text_size = chart_text_size_in == "Tiny" ? size.tiny : chart_text_size_in == "Normal" ? size.normal : chart_text_size_in == "Large" ? size.large : chart_text_size_in == "Huge" ? size.huge : size.small
+
+
+c3_eq_style = c3_eq_style_in == "Dashed" ? line.style_dashed : c3_eq_style_in == "Dotted" ? line.style_dotted : line.style_solid
+c4_eq_style = c4_eq_style_in == "Dashed" ? line.style_dashed : c4_eq_style_in == "Dotted" ? line.style_dotted : line.style_solid
+bull_c3_quartile_style = bull_c3_quartile_style_in == "Dashed" ? line.style_dashed : bull_c3_quartile_style_in == "Dotted" ? line.style_dotted : line.style_solid
+bear_c3_quartile_style = bear_c3_quartile_style_in == "Dashed" ? line.style_dashed : bear_c3_quartile_style_in == "Dotted" ? line.style_dotted : line.style_solid
+bull_c4_quartile_style = bull_c4_quartile_style_in == "Dashed" ? line.style_dashed : bull_c4_quartile_style_in == "Dotted" ? line.style_dotted : line.style_solid
+bear_c4_quartile_style = bear_c4_quartile_style_in == "Dashed" ? line.style_dashed : bear_c4_quartile_style_in == "Dotted" ? line.style_dotted : line.style_solid
+
+// Standard-deviation projection uses the confirmed C2 extreme and the latest
+// opposite LTF structure swing found before that extreme.
+show_sd_projection = input.bool(true, "Projection ON/OFF", inline="sd0", group=grp_sd_projection)
+sd_projection_levels = input.string("-1,-1.5,-2,-2.5,-3.5,-4", "Levels", inline="sd0", group=grp_sd_projection, tooltip="Comma-separated levels. 1 = C2 extreme, 0 = structure anchor, negative levels project beyond the structure anchor.")
+show_sd_projection_labels = input.bool(true, "Labels", inline="sd1", group=grp_sd_projection)
+sd_projection_label_size_in = input.string("Normal", "Size", options=["Tiny", "Small", "Normal", "Large"], inline="sd1", group=grp_sd_projection)
+sd_projection_color = input.color(color.new(color.black, 0), "Color", inline="sd2", group=grp_sd_projection)
+sd_projection_width = input.int(1, "Width", minval=1, maxval=5, inline="sd2", group=grp_sd_projection)
+sd_projection_style_in = input.string("Dotted", "Style", options=["Solid", "Dashed", "Dotted"], inline="sd2", group=grp_sd_projection)
+
+use_cisd       = input.bool(true, "CISD ON/OFF", inline="cisd0", group=grp_cisd)
+hist_plus_cisd = input.int(1, "+Hist", minval=0, maxval=100, inline="cisd0", group=grp_cisd)
+hist_minus_cisd = input.int(1, "-Hist", minval=0, maxval=100, inline="cisd0", group=grp_cisd)
+extend_cisd_bars = input.int(5, "Extend", minval=0, tooltip="Set how many bars the line should extend after confirmation.", inline="cisd0", group=grp_cisd)
+col_bull_conf  = input.color(color.new(#2962ff, 0), "+CISD", inline="cisd1", group=grp_cisd)
+col_bear_conf  = input.color(color.new(#f23645, 0), "-CISD", inline="cisd1", group=grp_cisd)
+col_pend       = input.color(color.new(#b8b8b8, 0), "Pending", inline="cisd1", group=grp_cisd)
+cisd_line_width = input.int(3, "CISD Width", minval=1, maxval=5, inline="cisd2", group=grp_cisd)
+cisd_line_style_input = input.string("Solid", "CISD Style", options=["Solid", "Dashed", "Dotted"], inline="cisd2", group=grp_cisd)
+// TTrades-style Intracandle CISD settings.
+use_ic_cisd = input.bool(true, "IC-CISD ON/OFF", inline="icc0", group=grp_cisd)
+ic_cisd_history = input.int(10, "History", minval=1, maxval=50, inline="icc0", group=grp_cisd)
+ic_show_dot = input.bool(true, "Dot", inline="icc1", group=grp_cisd)
+ic_dot_size_input = input.string("Small", "Dot Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], inline="icc1", group=grp_cisd)
+ic_line_width = input.int(2, "Width", minval=1, maxval=5, inline="icc1", group=grp_cisd)
+ic_line_style_input = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="icc1", group=grp_cisd)
+ic_extend_bars = input.int(5, "Extend", minval=0, maxval=100, inline="icc2", group=grp_cisd)
+ic_bull_color = input.color(color.new(#2962ff, 0), "+IC", inline="icc2", group=grp_cisd)
+ic_bear_color = input.color(color.new(#f23645, 0), "-IC", inline="icc2", group=grp_cisd)
+
+// Resolved after declarations to avoid undeclared-identifier compile errors.
+ic_dot_size = ic_dot_size_input == "Tiny" ? size.tiny : ic_dot_size_input == "Normal" ? size.normal : ic_dot_size_input == "Large" ? size.large : ic_dot_size_input == "Huge" ? size.huge : size.small
+cisd_line_style = cisd_line_style_input == "Dashed" ? line.style_dashed : cisd_line_style_input == "Dotted" ? line.style_dotted : line.style_solid
+
+use_htf_candles = input.bool(true, "HTF ON/OFF", inline="htf0", group=grp_htf_main)
+show_htf_hover_tooltip = input.bool(true, "Hover Info", inline="htf0", group=grp_htf_main, tooltip="Hover over a floating HTF candle to view PSP and SMT information only.")
+htf_mode        = input.string("Automatic", "Alignment", options=["Automatic", "Custom", "1s-1m", "15s-5m", "1m-15m", "3m-30m", "5m-1H", "15m-4H", "1H-1D", "4H-1W", "1D-1M", "1W-3M", "1M-12M"], inline="htf0", group=grp_htf_main)
+htf_manual_tf   = input.timeframe("15", "Custom TF", inline="htf0", group=grp_htf_main)
+htf_count       = input.int(4, "Count", minval=1, maxval=20, inline="htf1", group=grp_htf_main, tooltip="Controls only how many floating HTF candles are displayed.")
+htf_offset      = input.int(30, "Offset", minval=1, inline="htf1", group=grp_htf_main)
+htf_width       = input.int(3, "Width", minval=1, inline="htf1", group=grp_htf_main)
+htf_spacing     = input.int(3, "Spacing", minval=1, inline="htf1", group=grp_htf_main)
+col_htf_bull    = input.color(color.new(#ffffff, 0), "Bull Body", inline="htf2", group=grp_htf_main)
+col_htf_bear    = input.color(color.new(#000000, 0), "Bear Body", inline="htf2", group=grp_htf_main)
+col_htf_bull_border = input.color(#000000, "Bull Border", inline="htf3", group=grp_htf_main)
+col_htf_bear_border = input.color(#000000, "Bear Border", inline="htf3", group=grp_htf_main)
+htf_border_width = input.int(1, "Border", minval=1, maxval=5, inline="htf3", group=grp_htf_main)
+col_htf_wick    = input.color(color.new(color.gray, 0), "Wick", inline="htf4", group=grp_htf_main)
+show_htf_eq_line = input.bool(true, "HTF EQ ON/OFF", inline="htfeq", group=grp_htf_eq, tooltip="Shows the 50% equilibrium line across each floating HTF candle.")
+col_htf_eq_line  = input.color(color.new(#000000, 90), "Color", inline="htfeq", group=grp_htf_eq)
+htf_eq_width     = input.int(1, "Width", minval=1, maxval=10, inline="htfeq2", group=grp_htf_eq)
+htf_eq_style_in  = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="htfeq2", group=grp_htf_eq)
+col_htf_txt     = input.color(color.new(color.black, 0), "Time Text", inline="htf4", group=grp_htf_timer)
+show_htf_open_connector = input.bool(true, "HTF Open Connector", inline="htf_open", group=grp_htf_open, tooltip="Connects the selected number of latest floating HTF candle opens to their first LTF candles.")
+htf_open_connector_count = input.int(1, "No. of Lines", minval=1, maxval=20, inline="htf_open", group=grp_htf_open, tooltip="1 = current HTF candle only. Higher values include previous HTF candles.")
+col_htf_open_connector = input.color(color.new(color.orange, 15), "Color", inline="htf_open2", group=grp_htf_open)
+htf_open_connector_width = input.int(1, "Width", minval=1, maxval=5, inline="htf_open2", group=grp_htf_open)
+htf_open_connector_style = input.string("Solid", "Style", options=["Solid", "Dashed", "Dotted"], inline="htf_open2", group=grp_htf_open)
+show_htf_interval = input.bool(true, "Show Interval Below Candle", inline="htf4", group=grp_htf_timer, tooltip="Show or hide the time/interval value displayed below each floating HTF candle.")
+htf_timer_position = input.string("Both", "Timer Position", options=["Top", "Bottom", "Both"], inline="htf6", group=grp_htf_timer, tooltip="Places the live HTF timer at the horizontal centre of the complete floating HTF candle group.")
+htf_timer_size = input.string("Normal", "Timer Size", options=["Tiny", "Small", "Normal", "Large"], inline="htf6", group=grp_htf_timer)
+col_htf_mark_txt = input.color(color.black, "HTF Mark Text", inline="htf5", group=grp_htf_timer)
+col_htf_sweep   = input.color(color.new(color.black, 0), "Sweep", inline="htf5", group=grp_htf_timer)
+
+grp_smt = "12. SMT Divergence"
+use_smt       = input.bool(true, "SMT ON/OFF", inline="smt1", group=grp_smt)
+smt_ticker_in = input.symbol("", "Custom Ticker (Blank=Auto)", inline="smt1", group=grp_smt)
+smt_second_on = input.bool(true, "2nd SMT", inline="smt1", group=grp_smt)
+smt_ticker2_in = input.symbol("", "2nd Custom (Blank=Auto)", inline="smt2", group=grp_smt)
+smt_inverse1 = input.bool(false, "1st Inverse", inline="smt2", group=grp_smt)
+smt_inverse2 = input.bool(false, "2nd Inverse", inline="smt3", group=grp_smt)
+smt_history   = input.bool(true, "History", inline="smt3", group=grp_smt)
+show_htf_smt_text = input.bool(true, "HTF SMT Text ON/OFF", inline="smt3", group=grp_smt, tooltip="Show or hide SMT symbol text on the floating HTF candles. SMT lines remain visible.")
+col_smt_bull  = input.color(color.new(#000000, 0), "Bull SMT", inline="smt2", group=grp_smt)
+col_smt_bear  = input.color(color.new(#000000, 0), "Bear SMT", inline="smt2", group=grp_smt)
+smt_line_width = input.int(1, "Line Width", minval=1, maxval=10, inline="smt3", group=grp_smt)
+smt_line_style = input.string("Dotted", "Line Style", options=["Solid", "Dashed", "Dotted"], inline="smt3", group=grp_smt)
+smt_text_align = input.string("Center", "Align", options=["Left", "Center", "Right"], inline="smt4", group=grp_smt)
+smt_text_size  = input.string("Tiny", "Size", options=["Tiny", "Small", "Normal", "Large"], inline="smt4", group=grp_smt)
+smt_text_color = input.color(color.gray, "Text Color", inline="smt4", group=grp_smt)
+
+grp_sep = "13. Vertical Separators"
+use_vsep       = input.bool(true, "Show Separators", inline="sep1", group=grp_sep)
+vsep_col       = input.color(color.new(color.gray, 60), "Line Color", inline="sep1", group=grp_sep)
+vsep_width     = input.int(1, "Width", minval=1, maxval=10, inline="sep2", group=grp_sep)
+vsep_style     = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="sep2", group=grp_sep)
+
+// ==========================================
+// FRACTAL TIME MATCHING ENGINE
+// ==========================================
+get_auto_htf() =>
+    switch timeframe.period
+        "1" => "15"
+        "3" => "30"
+        "5" => "60"
+        "15" => "240"
+        "30" => "240"
+        "60" => "1D"
+        "120" => "1D"
+        "240" => "1W"
+        "1D" => "1M"
+        "1W" => "3M"
+        "1M" => "12M"
+        "1S" => "1"
+        "15S" => "5"
+        => ""
+
+get_fractal_htf() =>
+    switch htf_mode
+        "Automatic" => get_auto_htf()
+        "Custom" => htf_manual_tf
+        "1s-1m" => "1"
+        "15s-5m" => "5"
+        "1m-15m" => "15"
+        "3m-30m" => "30"
+        "5m-1H" => "60"
+        "15m-4H" => "240"
+        "1H-1D" => "1D"
+        "4H-1W" => "1W"
+        "1D-1M" => "1M"
+        "1W-3M" => "3M"
+        "1M-12M" => "12M"
+        => get_auto_htf()
+
+string active_htf_tf = get_fractal_htf()
+bool is_new_htf_tf = active_htf_tf != "" ? timeframe.change(active_htf_tf) : false
+
+int chart_seconds = timeframe.in_seconds()
+int htf_seconds   = timeframe.in_seconds(active_htf_tf)
+int default_bar_count = math.max(1, int(math.round(htf_seconds / chart_seconds)))
+
+var int bars_in_htf = default_bar_count
+var int bar_count_temp = 0
+
+if is_new_htf_tf
+    if bar_count_temp > 0
+        bars_in_htf := bar_count_temp
+    bar_count_temp := 1
+else
+    bar_count_temp += 1
+
+int matched_bar_count = bars_in_htf
+
+var int[] vsep_indices = array.new_int()
+if is_new_htf_tf
+    array.push(vsep_indices, bar_index)
+    if array.size(vsep_indices) > htf_count
+        array.shift(vsep_indices)
+
+get_tf_display_name(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    if sec >= 2419200
+        int m = math.round(sec / 2592000)
+        (m > 1 ? str.tostring(m) : "1") + "M"
+    else if sec >= 604800
+        int w = math.round(sec / 604800)
+        (w > 1 ? str.tostring(w) : "1") + "W"
+    else if sec >= 86400
+        int d = math.round(sec / 86400)
+        (d > 1 ? str.tostring(d) : "1") + "D"
+    else if sec >= 3600
+        int h = math.round(sec / 3600)
+        str.tostring(h) + "H"
+    else
+        int min = math.round(sec / 60)
+        str.tostring(min) + "m"
+
+type HTFCandle
+    float o
+    float h
+    float l
+    float c
+    int t
+    int start_bar
+
+type HTFMark
+    int t
+    bool c2
+    bool psp
+    bool c1_psp
+    string psp_name
+    bool psp_above
+    bool xc2
+    bool xc2_psp
+    bool c3
+    bool c4
+    bool rsmt
+    bool rsmt_bear
+    string rsmt_name
+    float rsmt_y1
+    float rsmt_y2
+    int rsmt_t1
+    int rsmt_t2
+    bool ssmt
+    bool ssmt_bear
+    string ssmt_name
+    float ssmt_y1
+    float ssmt_y2
+    int ssmt_t1
+    int ssmt_t2
+
+type ManipDrawings
+    box b
+    line l
+    label lbl
+    box dist_b
+    label dist_lbl
+    line dist_eq_l
+    box cont_b
+    label cont_lbl
+    line cont_eq_l
+    int id
+    line smt_l 
+    label smt_lbl
+    float def_line 
+    int c2_time
+    bool c2_psp
+    int c3_time
+    int c4_time
+
+type CISDHistory
+    line l
+    label lbl
+    int owner_id
+    int conf_bar 
+
+
+type OBHistory
+    line l
+    label lbl
+    int owner_id
+    bool bullish
+
+type SMT_Tracker
+    float h
+    float l
+    int h_idx
+    int l_idx
+    int h_t
+    int l_t
+    float prev_h
+    float prev_l
+    int prev_h_idx
+    int prev_l_idx
+    int prev_h_t
+    int prev_l_t
+
+// ==========================================================
+// SMT CORRELATION ENGINE
+// ==========================================================
+string invalid_symbol = "INVALID:INVALID"
+acl_config = resolveCurrentChart()
+string smt_sym1_resolved = smt_ticker_in == "" ? acl_config.secondary : smt_ticker_in
+string smt_sym2_resolved = smt_ticker2_in == "" ? acl_config.tertiary : smt_ticker2_in
+bool smt_sym1_inverse = smt_ticker_in == "" ? (smt_inverse1 != acl_config.invertSecondary) : smt_inverse1
+bool smt_sym2_inverse = smt_ticker2_in == "" ? (smt_inverse2 != acl_config.invertTertiary) : smt_inverse2
+[smt_sym1_h, smt_sym1_l] = request.security(smt_sym1_resolved, timeframe.period, [high, low], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+[smt_sym2_h, smt_sym2_l] = request.security(smt_sym2_resolved, timeframe.period, [high, low], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+
+string corr_ticker1 = not na(smt_sym1_h) and not na(smt_sym1_l) ? smt_sym1_resolved : invalid_symbol
+string corr_ticker2 = not na(smt_sym2_h) and not na(smt_sym2_l) ? smt_sym2_resolved : invalid_symbol
+
+get_smt_display_name(string ticker) =>
+    int sep = str.pos(ticker, ":")
+    sep >= 0 ? str.substring(ticker, sep + 1) : ticker
+
+string smt_sym1_ticker = corr_ticker1 != invalid_symbol ? get_smt_display_name(corr_ticker1) : ""
+string smt_sym2_ticker = corr_ticker2 != invalid_symbol ? get_smt_display_name(corr_ticker2) : ""
+
+var SMT_Tracker smt_tracker_curr = SMT_Tracker.new()
+var SMT_Tracker smt_tracker1 = SMT_Tracker.new()
+var SMT_Tracker smt_tracker2 = SMT_Tracker.new()
+
+// ==========================================================
+// HTF MARK MIRROR ENGINE
+// ==========================================================
+var HTFMark[] htf_marks = array.new<HTFMark>()
+// Main-chart C1 PSP labels. Labels are anchored to the centre of the actual
+// C1 HTF interval and retained with the same compact history policy.
+var label[] c1_psp_chart_labels = array.new_label()
+var int[] c1_psp_chart_times = array.new_int()
+// Unified xC2 storage declarations are placed here so C1 PSP rendering can check ownership.
+var label[] bull_xc2_history = array.new_label()
+var int[] bull_xc2_times = array.new_int()
+var label[] bear_xc2_history = array.new_label()
+var int[] bear_xc2_times = array.new_int()
+
+has_ltf_xc2_at_time(int target_time) =>
+    bool found = false
+    if array.size(bear_xc2_times) > 0
+        for xi = 0 to array.size(bear_xc2_times) - 1
+            if array.get(bear_xc2_times, xi) == target_time
+                found := true
+                break
+    if not found and array.size(bull_xc2_times) > 0
+        for xi = 0 to array.size(bull_xc2_times) - 1
+            if array.get(bull_xc2_times, xi) == target_time
+                found := true
+                break
+    found
+store_c1_psp_chart_label(int c1_time, float c1_high, float c1_low, bool c1_bullish) =>
+    bool xc2_owns_candle = has_ltf_xc2_at_time(c1_time)
+    bool already_drawn = false
+    if array.size(c1_psp_chart_times) > 0
+        for pi = 0 to array.size(c1_psp_chart_times) - 1
+            if array.get(c1_psp_chart_times, pi) == c1_time
+                already_drawn := true
+                break
+    if not already_drawn and not xc2_owns_candle
+        // FIX: use absolute HTF time anchoring instead of conditional ta.valuewhen().
+        // The old lookup could return na when this function was called only on C2
+        // confirmation, so the HTF panel had PSP state but no LTF chart label.
+        int c1_center_time = c1_time + int(math.round(timeframe.in_seconds(active_htf_tf) * 1000.0 / 2.0))
+        float c1_pad = math.max((c1_high - c1_low) * 0.03, syminfo.mintick * 5)
+        float c1_y = c1_bullish ? c1_low - c1_pad : c1_high + c1_pad
+        label c1_lb = label.new(x=c1_center_time, y=c1_y, xloc=xloc.bar_time, text="PSP", style=label.style_none, textcolor=manip_txt_col, size=chart_text_size, textalign=text.align_center)
+        array.push(c1_psp_chart_labels, c1_lb)
+        array.push(c1_psp_chart_times, c1_time)
+        int max_c1_psp_labels = math.max(2, bull_history + bear_history)
+        while array.size(c1_psp_chart_labels) > max_c1_psp_labels
+            label.delete(array.shift(c1_psp_chart_labels))
+            array.shift(c1_psp_chart_times)
+
+delete_c1_psp_chart_label(int target_time) =>
+    if array.size(c1_psp_chart_times) > 0
+        for pi = array.size(c1_psp_chart_times) - 1 to 0
+            if array.get(c1_psp_chart_times, pi) == target_time
+                label.delete(array.get(c1_psp_chart_labels, pi))
+                array.remove(c1_psp_chart_labels, pi)
+                array.remove(c1_psp_chart_times, pi)
+
+get_htf_mark_index(int mark_time) =>
+    int found = -1
+    if array.size(htf_marks) > 0
+        for mi = 0 to array.size(htf_marks) - 1
+            HTFMark hm = array.get(htf_marks, mi)
+            if hm.t == mark_time
+                found := mi
+                break
+    found
+
+// Robust lookup for floating HTF candles. It first uses an exact timestamp,
+// then accepts any stored mark falling inside that HTF candle's time window.
+get_htf_mark_index_for_candle(int candle_time, int candle_ms) =>
+    int found = get_htf_mark_index(candle_time)
+    if found == -1 and array.size(htf_marks) > 0
+        int candle_end = candle_time + candle_ms
+        for mi = array.size(htf_marks) - 1 to 0
+            HTFMark hm = array.get(htf_marks, mi)
+            if hm.t >= candle_time and hm.t < candle_end
+                found := mi
+                break
+    found
+
+ensure_htf_mark(int mark_time) =>
+    int idx = get_htf_mark_index(mark_time)
+    if idx == -1
+        array.push(htf_marks, HTFMark.new(t=mark_time, c2=false, psp=false, c1_psp=false, psp_name="", psp_above=false, xc2=false, xc2_psp=false, c3=false, c4=false, rsmt=false, rsmt_bear=false, rsmt_name="", rsmt_y1=na, rsmt_y2=na, rsmt_t1=na, rsmt_t2=na, ssmt=false, ssmt_bear=false, ssmt_name="", ssmt_y1=na, ssmt_y2=na, ssmt_t1=na, ssmt_t2=na))
+        idx := array.size(htf_marks) - 1
+    idx
+
+trim_htf_marks() =>
+    int keep = math.max(20, htf_history_count * 6)
+    while array.size(htf_marks) > keep
+        array.shift(htf_marks)
+
+var int c15_start_time = na
+
+var OBHistory[] bull_ob_history = array.new<OBHistory>()
+var OBHistory[] bear_ob_history = array.new<OBHistory>()
+
+trim_ob_history(OBHistory[] arr, int max_count) =>
+    while array.size(arr) > max_count
+        OBHistory old = array.shift(arr)
+        line.delete(old.l)
+        if not na(old.lbl)
+            label.delete(old.lbl)
+
+delete_ob_for_manip(int target_id) =>
+    if target_id != 0
+        if array.size(bull_ob_history) > 0
+            for i = array.size(bull_ob_history) - 1 to 0
+                OBHistory item = array.get(bull_ob_history, i)
+                if item.owner_id == target_id
+                    line.delete(item.l)
+                    if not na(item.lbl)
+                        label.delete(item.lbl)
+                    array.remove(bull_ob_history, i)
+        if array.size(bear_ob_history) > 0
+            for i = array.size(bear_ob_history) - 1 to 0
+                OBHistory item = array.get(bear_ob_history, i)
+                if item.owner_id == target_id
+                    line.delete(item.l)
+                    if not na(item.lbl)
+                        label.delete(item.lbl)
+                    array.remove(bear_ob_history, i)
+
+var CISDHistory[] plus_cisd_history = array.new<CISDHistory>()
+var CISDHistory[] minus_cisd_history = array.new<CISDHistory>()
+
+trim_cisd_history(CISDHistory[] arr, int max_count) =>
+    while array.size(arr) > max_count
+        CISDHistory old = array.shift(arr)
+        line.delete(old.l)
+        label.delete(old.lbl)
+
+add_cisd_history(CISDHistory[] arr, line ln, label lb, int owner_id, int max_count) =>
+    if max_count > 0
+        array.push(arr, CISDHistory.new(ln, lb, owner_id, bar_index)) 
+        trim_cisd_history(arr, max_count)
+    else
+        line.delete(ln)
+        label.delete(lb)
+
+delete_cisd_for_manip(int target_id) =>
+    if target_id != 0
+        if array.size(plus_cisd_history) > 0
+            for i = array.size(plus_cisd_history) - 1 to 0
+                CISDHistory item = array.get(plus_cisd_history, i)
+                if item.owner_id == target_id
+                    line.delete(item.l)
+                    label.delete(item.lbl)
+                    array.remove(plus_cisd_history, i)
+        if array.size(minus_cisd_history) > 0
+            for i = array.size(minus_cisd_history) - 1 to 0
+                CISDHistory item = array.get(minus_cisd_history, i)
+                if item.owner_id == target_id
+                    line.delete(item.l)
+                    label.delete(item.lbl)
+                    array.remove(minus_cisd_history, i)
+
+get_line_style(s) => s == "Solid" ? line.style_solid : s == "Dashed" ? line.style_dashed : line.style_dotted
+get_text_size(s) => s == "Tiny" ? size.tiny : s == "Small" ? size.normal : s == "Normal" ? size.normal : size.large
+
+// ==========================================================
+// STANDARD DEVIATION PROJECTION ENGINE
+// 1 = confirmed C2 extreme
+// 0 = latest opposite structure swing before the C2 extreme
+// negative values = projections beyond level 0
+// ==========================================================
+var line[] sd_projection_lines = array.new_line()
+var label[] sd_projection_labels = array.new_label()
+var int[] sd_projection_owner_ids = array.new_int()
+
+sd_projection_label_size = sd_projection_label_size_in == "Tiny" ? size.tiny : sd_projection_label_size_in == "Small" ? size.small : sd_projection_label_size_in == "Large" ? size.large : size.normal
+
+delete_sd_projection_for_owner(int target_id) =>
+    if target_id != 0 and array.size(sd_projection_owner_ids) > 0
+        for si = array.size(sd_projection_owner_ids) - 1 to 0
+            if array.get(sd_projection_owner_ids, si) == target_id
+                line.delete(array.get(sd_projection_lines, si))
+                label sd_old_label = array.get(sd_projection_labels, si)
+                if not na(sd_old_label)
+                    label.delete(sd_old_label)
+                array.remove(sd_projection_lines, si)
+                array.remove(sd_projection_labels, si)
+                array.remove(sd_projection_owner_ids, si)
+
+trim_sd_projection_history() =>
+    int level_count = math.max(1, array.size(str.split(sd_projection_levels, ",")))
+    int max_objects = math.max(level_count, (bull_history + bear_history) * level_count)
+    while array.size(sd_projection_lines) > max_objects
+        line.delete(array.shift(sd_projection_lines))
+        label sd_old_label = array.shift(sd_projection_labels)
+        if not na(sd_old_label)
+            label.delete(sd_old_label)
+        array.shift(sd_projection_owner_ids)
+
+f_sd_structure_anchor(bool bearish, int c2_start_t, int c2_end_t, float c2_extreme) =>
+    float structure_anchor = na
+    int structure_time = na
+    int extreme_time = na
+    int htf_ms_local = timeframe.in_seconds(active_htf_tf) * 1000
+    int search_start_t = c2_start_t - htf_ms_local
+    for k = 0 to 5000
+        int kt = time[k]
+        if na(kt)
+            break
+        if kt < c2_start_t
+            break
+        if kt >= c2_start_t and kt < c2_end_t
+            bool is_extreme_bar = bearish ? high[k] >= c2_extreme : low[k] <= c2_extreme
+            if is_extreme_bar
+                extreme_time := kt
+                break
+    if not na(extreme_time)
+        for k = 1 to 4999
+            int kt = time[k]
+            if na(kt) or na(time[k + 1]) or na(time[k - 1])
+                break
+            if kt < search_start_t
+                break
+            if kt >= search_start_t and kt < extreme_time
+                bool swing_low = low[k] < low[k + 1] and low[k] < low[k - 1]
+                bool swing_high = high[k] > high[k + 1] and high[k] > high[k - 1]
+                if bearish and swing_low
+                    structure_anchor := low[k]
+                    structure_time := kt
+                    break
+                if not bearish and swing_high
+                    structure_anchor := high[k]
+                    structure_time := kt
+                    break
+    [structure_anchor, structure_time, extreme_time]
+
+f_draw_sd_projection(bool bearish, int c2_start_t, int c2_end_t, float c2_extreme, int owner_id) =>
+    if show_sd_projection and owner_id != 0 and not na(c2_extreme)
+        [structure_anchor, structure_time, extreme_time] = f_sd_structure_anchor(bearish, c2_start_t, c2_end_t, c2_extreme)
+        if not na(structure_anchor) and not na(structure_time) and not na(extreme_time)
+            delete_sd_projection_for_owner(owner_id)
+            float projection_range = math.abs(c2_extreme - structure_anchor)
+            int marker_x1 = math.min(structure_time, extreme_time)
+            int marker_x2 = math.max(structure_time, extreme_time)
+            if marker_x1 == marker_x2
+                marker_x2 += timeframe.in_seconds() * 1000
+            string[] level_parts = str.split(sd_projection_levels, ",")
+            if array.size(level_parts) > 0
+                for pi = 0 to array.size(level_parts) - 1
+                    string raw_level = str.trim(array.get(level_parts, pi))
+                    float level_value = str.tonumber(raw_level)
+                    if not na(level_value)
+                        float level_price = level_value == 1 ? c2_extreme : level_value == 0 ? structure_anchor : bearish ? structure_anchor - projection_range * math.abs(level_value) : structure_anchor + projection_range * math.abs(level_value)
+                        line projection_line = line.new(marker_x1, level_price, marker_x2, level_price, xloc=xloc.bar_time, color=sd_projection_color, width=sd_projection_width, style=get_line_style(sd_projection_style_in))
+                        label projection_label = show_sd_projection_labels ? label.new(marker_x1, level_price, raw_level, xloc=xloc.bar_time, style=label.style_label_right, color=color.new(color.black, 100), textcolor=sd_projection_color, textalign=text.align_right, size=sd_projection_label_size) : na
+                        array.push(sd_projection_lines, projection_line)
+                        array.push(sd_projection_labels, projection_label)
+                        array.push(sd_projection_owner_ids, owner_id)
+            trim_sd_projection_history()
+get_timer_size(s) => s == "Tiny" ? size.tiny : s == "Small" ? size.small : s == "Normal" ? size.normal : size.large
+get_smt_lbl_x(x1, x2, align) => align == "Left" ? x1 : align == "Center" ? int(math.round(math.avg(x1, x2))) : x2
+
+CheckSMTDivergence(bool is_bearish, SMT_Tracker tracker_curr,
+                   SMT_Tracker tracker1, SMT_Tracker tracker2,
+                   bool sym1_enabled, bool sym2_enabled,
+                   bool sym1_inverse, bool sym2_inverse,
+                   string sym1_ticker, string sym2_ticker) =>
+    bool has_smt = false
+    int x1 = na
+    int x2 = na
+    float y1 = na
+    float y2 = na
+    int t1 = na
+    int t2 = na
+    string smt_sym = ""
+    bool sym1_triggered = false
+    bool sym2_triggered = false
+
+    bool curr_hh = not na(tracker_curr.prev_h) and tracker_curr.h > tracker_curr.prev_h
+    bool curr_ll = not na(tracker_curr.prev_l) and tracker_curr.l < tracker_curr.prev_l
+    bool curr_lh = not na(tracker_curr.prev_h) and tracker_curr.h < tracker_curr.prev_h
+    bool curr_hl = not na(tracker_curr.prev_l) and tracker_curr.l > tracker_curr.prev_l
+
+    if sym1_enabled and not na(tracker1.prev_h) and not na(tracker1.h)
+        bool comp_hh = tracker1.h > tracker1.prev_h
+        bool comp_ll = not na(tracker1.prev_l) and tracker1.l < tracker1.prev_l
+        bool comp_lh = tracker1.h < tracker1.prev_h
+        bool comp_hl = not na(tracker1.prev_l) and tracker1.l > tracker1.prev_l
+        if is_bearish
+            bool curr_leads = sym1_inverse ? (curr_hh and comp_hl) : (curr_hh and comp_lh)
+            bool comp_leads = sym1_inverse ? (comp_ll and curr_lh) : (comp_hh and curr_lh)
+            sym1_triggered := curr_leads or comp_leads
+        else
+            bool curr_leads = sym1_inverse ? (curr_ll and comp_lh) : (curr_ll and comp_hl)
+            bool comp_leads = sym1_inverse ? (comp_hh and curr_hl) : (comp_ll and curr_hl)
+            sym1_triggered := curr_leads or comp_leads
+
+    if sym2_enabled and not na(tracker2.prev_h) and not na(tracker2.h)
+        bool comp_hh = tracker2.h > tracker2.prev_h
+        bool comp_ll = not na(tracker2.prev_l) and tracker2.l < tracker2.prev_l
+        bool comp_lh = tracker2.h < tracker2.prev_h
+        bool comp_hl = not na(tracker2.prev_l) and tracker2.l > tracker2.prev_l
+        if is_bearish
+            bool curr_leads = sym2_inverse ? (curr_hh and comp_hl) : (curr_hh and comp_lh)
+            bool comp_leads = sym2_inverse ? (comp_ll and curr_lh) : (comp_hh and curr_lh)
+            sym2_triggered := curr_leads or comp_leads
+        else
+            bool curr_leads = sym2_inverse ? (curr_ll and comp_lh) : (curr_ll and comp_hl)
+            bool comp_leads = sym2_inverse ? (comp_hh and curr_hl) : (comp_ll and curr_hl)
+            sym2_triggered := comp_leads or curr_leads
+
+    if sym1_triggered or sym2_triggered
+        has_smt := true
+        if is_bearish
+            x1 := tracker_curr.prev_h_idx
+            x2 := tracker_curr.h_idx
+            y1 := tracker_curr.prev_h
+            y2 := tracker_curr.h
+            t1 := tracker_curr.prev_h_t
+            t2 := tracker_curr.h_t
+        else
+            x1 := tracker_curr.prev_l_idx
+            x2 := tracker_curr.l_idx
+            y1 := tracker_curr.prev_l
+            y2 := tracker_curr.l
+            t1 := tracker_curr.prev_l_t
+            t2 := tracker_curr.l_t
+        smt_sym := sym1_triggered and sym2_triggered ? sym1_ticker + "/" + sym2_ticker : sym1_triggered ? sym1_ticker : sym2_ticker
+
+    [has_smt, x1, x2, y1, y2, t1, t2, smt_sym]
+
+// ==========================================
+// CORE LOGIC 1: HTF CANDLES EXECUTION
+// ==========================================
+var HTFCandle[] htf_hist = array.new<HTFCandle>()
+var HTFCandle cur_htf = na
+
+if use_htf_candles
+    if is_new_htf_tf or na(cur_htf)
+        if not na(cur_htf)
+            array.push(htf_hist, HTFCandle.new(cur_htf.o, cur_htf.h, cur_htf.l, cur_htf.c, cur_htf.t, cur_htf.start_bar))
+            // Candle display storage is independent from model History.
+            // Preserve the maximum display capacity and slice by htf_count at render time.
+            if array.size(htf_hist) > 19
+                array.shift(htf_hist)
+        cur_htf := HTFCandle.new(open, high, low, close, nz(time(active_htf_tf), time), bar_index)
+    else
+        cur_htf.h := math.max(cur_htf.h, high)
+        cur_htf.l := math.min(cur_htf.l, low)
+        cur_htf.c := close
+
+var box[] htf_drawn_boxes = array.new_box()
+var line[] htf_drawn_wicks = array.new_line()
+var label[] htf_drawn_labels = array.new_label()
+var label[] htf_hover_labels = array.new_label()
+var line[] drawn_vseps = array.new_line()
+
+// ==========================================
+// CORE LOGIC 2: AMD FRACTAL MANIPULATION ENGINE
+// ==========================================
+bool bear_new_high_made = false
+bool bull_new_low_made = false
+
+var ManipDrawings[] bull_manips = array.new<ManipDrawings>()
+var ManipDrawings[] bear_manips = array.new<ManipDrawings>()
+var line[] quartile_history_lines = array.new_line()
+var int[] quartile_line_owner_ids = array.new_int()
+var box[] quartile_history_fills = array.new_box()
+var int[] quartile_fill_owner_ids = array.new_int()
+delete_quartiles_for_owner(int owner_id) =>
+    if owner_id != 0
+        if array.size(quartile_history_lines) > 0
+            for qi = array.size(quartile_history_lines) - 1 to 0
+                if array.get(quartile_line_owner_ids, qi) == owner_id
+                    line.delete(array.get(quartile_history_lines, qi))
+                    array.remove(quartile_history_lines, qi)
+                    array.remove(quartile_line_owner_ids, qi)
+        if array.size(quartile_history_fills) > 0
+            for qi = array.size(quartile_history_fills) - 1 to 0
+                if array.get(quartile_fill_owner_ids, qi) == owner_id
+                    box.delete(array.get(quartile_history_fills, qi))
+                    array.remove(quartile_history_fills, qi)
+                    array.remove(quartile_fill_owner_ids, qi)
+trim_quartile_history() =>
+    int keep_lines = math.max(8, (bull_history + bear_history) * 4)
+    int keep_fills = math.max(4, (bull_history + bear_history) * 2)
+    while array.size(quartile_history_lines) > keep_lines
+        line old_q_line = array.shift(quartile_history_lines)
+        array.shift(quartile_line_owner_ids)
+        line.delete(old_q_line)
+    while array.size(quartile_history_fills) > keep_fills
+        box old_q_fill = array.shift(quartile_history_fills)
+        array.shift(quartile_fill_owner_ids)
+        box.delete(old_q_fill)
+
+// Only the latest xC2/xC2+PSP is retained across both directions.
+clear_all_ltf_xc2() =>
+    while array.size(bear_xc2_history) > 0
+        label.delete(array.pop(bear_xc2_history))
+    array.clear(bear_xc2_times)
+    while array.size(bull_xc2_history) > 0
+        label.delete(array.pop(bull_xc2_history))
+    array.clear(bull_xc2_times)
+
+delete_ltf_xc2_at_time(int target_time) =>
+    if array.size(bear_xc2_times) > 0
+        for xi = array.size(bear_xc2_times) - 1 to 0
+            if array.get(bear_xc2_times, xi) == target_time
+                label.delete(array.get(bear_xc2_history, xi))
+                array.remove(bear_xc2_history, xi)
+                array.remove(bear_xc2_times, xi)
+    if array.size(bull_xc2_times) > 0
+        for xi = array.size(bull_xc2_times) - 1 to 0
+            if array.get(bull_xc2_times, xi) == target_time
+                label.delete(array.get(bull_xc2_history, xi))
+                array.remove(bull_xc2_history, xi)
+                array.remove(bull_xc2_times, xi)
+
+store_xc2_label(label lb, label[] history, int[] time_history, int invalidated_time, int max_count, bool failed_c2_had_psp) =>
+    // A newly invalidated confirmed C2 becomes the only visible xC2-family label.
+    clear_all_ltf_xc2()
+    delete_c1_psp_chart_label(invalidated_time)
+    int role_idx = get_htf_mark_index(invalidated_time)
+    bool blocked_by_c3_c4 = role_idx >= 0 and (array.get(htf_marks, role_idx).c3 or array.get(htf_marks, role_idx).c4)
+    if not na(lb)
+        if blocked_by_c3_c4
+            label.delete(lb)
+        else
+            label.set_text(lb, failed_c2_had_psp ? "xC2+PSP" : "xC2")
+            label.set_textcolor(lb, color.red)
+            array.push(history, lb)
+            array.push(time_history, invalidated_time)
+            while array.size(history) > 1
+                label old_lb = array.shift(history)
+                array.shift(time_history)
+                label.delete(old_lb)
+
+upgrade_xc2_to_psp(int c1_time) =>
+    int role_idx = get_htf_mark_index(c1_time)
+    bool blocked_by_c3_c4 = role_idx >= 0 and (array.get(htf_marks, role_idx).c3 or array.get(htf_marks, role_idx).c4)
+    if blocked_by_c3_c4
+        delete_ltf_xc2_at_time(c1_time)
+    if not blocked_by_c3_c4 and array.size(bear_xc2_times) > 0
+        for xi = 0 to array.size(bear_xc2_times) - 1
+            if array.get(bear_xc2_times, xi) == c1_time
+                label.set_text(array.get(bear_xc2_history, xi), "xC2+PSP")
+    if not blocked_by_c3_c4 and array.size(bull_xc2_times) > 0
+        for xi = 0 to array.size(bull_xc2_times) - 1
+            if array.get(bull_xc2_times, xi) == c1_time
+                label.set_text(array.get(bull_xc2_history, xi), "xC2+PSP")
+
+var int next_manip_id = 0
+
+var int latest_bull_manip_id = 0
+var int latest_bull_manip_start = 0
+var int latest_bear_manip_id = 0
+var int latest_bear_manip_start = 0
+
+var float p15_h = na, var int p15_h_bar = na
+var float p15_l = na, var int p15_l_bar = na
+
+var float c15_h = na, var int c15_h_bar = na
+var float c15_l = na, var int c15_l_bar = na
+var int c15_start_bar = bar_index
+var float c15_open = na 
+
+var bool p15_h_swept = false
+var bool p15_l_swept = false
+
+var bool is_bear_sweeping = false
+var box  active_bear_b = na
+var line active_bear_l = na
+var label active_bear_lbl = na
+var int active_bear_manip_id = 0
+var float sweep_high = na
+
+var bool is_bull_sweeping = false
+var box  active_bull_b = na
+var line active_bull_l = na
+var label active_bull_lbl = na
+var int active_bull_manip_id = 0
+var float sweep_low = na
+
+var bool active_bear_smt_ok = false
+var int active_bear_smt_x1 = na
+var int active_bear_smt_x2 = na
+var float active_bear_smt_y1 = na
+var float active_bear_smt_y2 = na
+var int active_bear_smt_t1 = na
+var int active_bear_smt_t2 = na
+var string active_bear_smt_name = ""
+
+var bool active_bull_smt_ok = false
+var int active_bull_smt_x1 = na
+var int active_bull_smt_x2 = na
+var float active_bull_smt_y1 = na
+var float active_bull_smt_y2 = na
+var int active_bull_smt_t1 = na
+var int active_bull_smt_t2 = na
+var string active_bull_smt_name = ""
+
+var line active_bear_smt_live_l = na
+var label active_bear_smt_live_lbl = na
+var line active_bull_smt_live_l = na
+var label active_bull_smt_live_lbl = na
+
+var line active_bull_cisd_l = na
+var label active_bull_cisd_lbl = na
+var int active_bull_cisd_owner = 0
+var line active_bear_cisd_l = na
+var label active_bear_cisd_lbl = na
+var int active_bear_cisd_owner = 0
+
+var int bull_cisd_done_owner = 0
+var int bear_cisd_done_owner = 0
+
+var float bull_level_fixed = na
+var int bull_index_fixed = na
+var bool bull_reclaimed = false
+var bool bull_cisd_pending = false
+
+var float bear_level_fixed = na
+var int bear_index_fixed = na
+var bool bear_reclaimed = false
+var bool bear_cisd_pending = false
+
+var box active_bear_dist_b = na
+var label active_bear_dist_lbl = na
+var line active_bear_dist_eq_l = na 
+var box active_bear_cont_b = na
+var label active_bear_cont_lbl = na
+var line active_bear_cont_eq_l = na
+var line active_bear_c4_open_l = na
+var box active_bear_c4_fill_b = na
+var float active_bear_defense_line = na 
+var float active_bear_c4_invalid_eq = na
+var int active_bear_c3_time = na
+var int active_bear_c4_time = na
+
+var box active_bull_dist_b = na
+var label active_bull_dist_lbl = na
+var line active_bull_dist_eq_l = na 
+var box active_bull_cont_b = na
+var label active_bull_cont_lbl = na
+var line active_bull_cont_eq_l = na
+var line active_bull_c4_open_l = na
+var box active_bull_c4_fill_b = na
+var float active_bull_defense_line = na 
+var float active_bull_c4_invalid_eq = na
+var int active_bull_c3_time = na
+var int active_bull_c4_time = na
+
+
+var bool pending_bear_c4 = false
+var float bear_c3_mid = na
+var int bear_c3_id = 0
+
+var bool pending_bull_c4 = false
+var float bull_c3_mid = na
+var int bull_c3_id = 0
+
+bool is_new_15m = is_new_htf_tf
+
+// ==========================================================
+// CSMT EXACT INTRARANGE SWING ANCHOR TRACKER
+// C2 anchor = exact chart-bar time of the C2 HTF extreme.
+// C3 anchor = exact chart-bar time of the running C3 HTF extreme.
+// This updates tick-by-tick on the live chart. No C3 close is required.
+// ==========================================================
+var float csmt_run_h = na
+var float csmt_run_l = na
+var int   csmt_run_h_time = na
+var int   csmt_run_l_time = na
+var float csmt_prev_h = na
+var float csmt_prev_l = na
+var int   csmt_prev_h_time = na
+var int   csmt_prev_l_time = na
+
+if na(csmt_run_h)
+    csmt_run_h := high
+    csmt_run_l := low
+    csmt_run_h_time := time
+    csmt_run_l_time := time
+else if is_new_15m
+    csmt_prev_h := csmt_run_h
+    csmt_prev_l := csmt_run_l
+    csmt_prev_h_time := csmt_run_h_time
+    csmt_prev_l_time := csmt_run_l_time
+    csmt_run_h := high
+    csmt_run_l := low
+    csmt_run_h_time := time
+    csmt_run_l_time := time
+else
+    if high > csmt_run_h
+        csmt_run_h := high
+        csmt_run_h_time := time
+    if low < csmt_run_l
+        csmt_run_l := low
+        csmt_run_l_time := time
+
+// ==========================================================
+// C.SMT — C2 -> C3 CORRELATED CONTINUATION
+// FIXED: historical CSMT persistence + correct correlated C3 live values
+// ==========================================================
+var line[] csmt_history_lines = array.new_line()
+var label[] csmt_history_labels = array.new_label()
+var line csmt_live_line = na
+var label csmt_live_label = na
+
+csmt_trim_history() =>
+    int max_csmt = math.max(1, math.max(bull_history, bear_history))
+    while array.size(csmt_history_lines) > max_csmt
+        line old_l = array.shift(csmt_history_lines)
+        label old_lb = array.shift(csmt_history_labels)
+        line.delete(old_l)
+        if not na(old_lb)
+            label.delete(old_lb)
+
+csmt_get_name(bool s1, bool s2) =>
+    s1 and s2 ? smt_sym1_ticker + "/" + smt_sym2_ticker : s1 ? smt_sym1_ticker : s2 ? smt_sym2_ticker : ""
+
+// ----------------------------------------------------------
+// Source HTF candles:
+// C1 = [2], C2 = [1], C3 = [0] (C3 is live).
+// Correlated C3 MUST use the correlated symbol's own live
+// high/low. The old version accidentally compared the source
+// C3 low/high against the correlated C2 levels.
+// ----------------------------------------------------------
+[cs1_h1, cs1_l1, cs1_o1, cs1_c1] = request.security(smt_sym1_resolved, active_htf_tf, [high[1], low[1], open[1], close[1]], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+[cs1_h2, cs1_l2, cs1_o2, cs1_c2] = request.security(smt_sym1_resolved, active_htf_tf, [high[2], low[2], open[2], close[2]], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+
+[cs2_h1, cs2_l1, cs2_o1, cs2_c1] = request.security(smt_sym2_resolved, active_htf_tf, [high[1], low[1], open[1], close[1]], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+[cs2_h2, cs2_l2, cs2_o2, cs2_c2] = request.security(smt_sym2_resolved, active_htf_tf, [high[2], low[2], open[2], close[2]], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+
+[csmt_c3_h, csmt_c3_l, csmt_c3_o, csmt_c3_c] = request.security(syminfo.tickerid, active_htf_tf, [high, low, open, close], lookahead=barmerge.lookahead_on)
+[csmt_c2_h, csmt_c2_l, csmt_c2_o, csmt_c2_c] = request.security(syminfo.tickerid, active_htf_tf, [high[1], low[1], open[1], close[1]], lookahead=barmerge.lookahead_on)
+[csmt_c1_h, csmt_c1_l, csmt_c1_o, csmt_c1_c] = request.security(syminfo.tickerid, active_htf_tf, [high[2], low[2], open[2], close[2]], lookahead=barmerge.lookahead_on)
+
+int csmt_c3_time = nz(time(active_htf_tf), time)
+int csmt_c2_time = request.security(syminfo.tickerid, active_htf_tf, time[1], lookahead=barmerge.lookahead_on)
+int csmt_c1_time = request.security(syminfo.tickerid, active_htf_tf, time[2], lookahead=barmerge.lookahead_on)
+
+// Correlated symbol's LIVE C3 values.
+[cs1_live_h, cs1_live_l, cs1_live_o, cs1_live_c] = request.security(smt_sym1_resolved, active_htf_tf, [high, low, open, close], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+[cs2_live_h, cs2_live_l, cs2_live_o, cs2_live_c] = request.security(smt_sym2_resolved, active_htf_tf, [high, low, open, close], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+// PSP helper: compare closure direction after inverse-correlation normalization.
+// Dojis on either side do not qualify.
+psp_dir_disagrees(float local_o, float local_c, float corr_o, float corr_c, bool inverse) =>
+    int local_dir = local_c > local_o ? 1 : local_c < local_o ? -1 : 0
+    int corr_raw_dir = corr_c > corr_o ? 1 : corr_c < corr_o ? -1 : 0
+    int corr_dir = inverse ? -corr_raw_dir : corr_raw_dir
+    local_dir != 0 and corr_dir != 0 and local_dir != corr_dir
+psp_source_name(bool source1, bool source2) =>
+    string result = ""
+    if source1 and source2
+        result := smt_sym1_ticker + "/" + smt_sym2_ticker
+    else if source1
+        result := smt_sym1_ticker
+    else if source2
+        result := smt_sym2_ticker
+    result
+
+// ----------------------------------------------------------
+// CSMT STRICT C2 -> C3 DIVERGENCE
+// Bullish CSMT:
+//   Chart C3 must NOT take chart C2 low, while a correlated
+//   asset C3 DOES take its own C2 low.
+// Bearish CSMT:
+//   Chart C3 must NOT take chart C2 high, while a correlated
+//   asset C3 DOES take its own C2 high.
+// No C1 sweep/reclaim condition is used here.
+// Equality is treated as "not taken". A take requires < or >.
+// ----------------------------------------------------------
+bool csmt_local_data = not na(csmt_c3_h) and not na(csmt_c3_l) and not na(csmt_c2_h) and not na(csmt_c2_l)
+
+// The chart must HOLD its C2 extreme during C3.
+bool csmt_local_bull_hold = csmt_local_data and csmt_c3_l >= csmt_c2_l
+bool csmt_local_bear_hold = csmt_local_data and csmt_c3_h <= csmt_c2_h
+
+// Correlated asset 1: compare its LIVE C3 against its own C2 [1].
+bool csmt_corr1_data = not na(cs1_live_h) and not na(cs1_live_l) and not na(cs1_h1) and not na(cs1_l1)
+bool csmt_corr1_takes_low  = csmt_corr1_data and cs1_live_l < cs1_l1
+bool csmt_corr1_takes_high = csmt_corr1_data and cs1_live_h > cs1_h1
+
+// Correlated asset 2: same strict C2 -> C3 test.
+bool csmt_corr2_data = smt_second_on and not na(cs2_live_h) and not na(cs2_live_l) and not na(cs2_h1) and not na(cs2_l1)
+bool csmt_corr2_takes_low  = csmt_corr2_data and cs2_live_l < cs2_l1
+bool csmt_corr2_takes_high = csmt_corr2_data and cs2_live_h > cs2_h1
+
+// For an inverse correlation, the corresponding opposite extreme is used.
+bool csmt_corr1_bull_match = smt_sym1_inverse ? csmt_corr1_takes_high : csmt_corr1_takes_low
+bool csmt_corr1_bear_match = smt_sym1_inverse ? csmt_corr1_takes_low  : csmt_corr1_takes_high
+bool csmt_corr2_bull_match = smt_second_on and (smt_sym2_inverse ? csmt_corr2_takes_high : csmt_corr2_takes_low)
+bool csmt_corr2_bear_match = smt_second_on and (smt_sym2_inverse ? csmt_corr2_takes_low  : csmt_corr2_takes_high)
+
+// A valid CSMT requires one side to take and the chart side to hold.
+bool csmt_bull_s1 = csmt_local_bull_hold and csmt_corr1_bull_match
+bool csmt_bear_s1 = csmt_local_bear_hold and csmt_corr1_bear_match
+bool csmt_bull_s2 = csmt_local_bull_hold and csmt_corr2_bull_match
+bool csmt_bear_s2 = csmt_local_bear_hold and csmt_corr2_bear_match
+
+bool csmt_bull = use_smt and allow_bull and (csmt_bull_s1 or csmt_bull_s2)
+bool csmt_bear = use_smt and allow_bear and (csmt_bear_s1 or csmt_bear_s2)
+
+// ----------------------------------------------------------
+// Helper: write the CSMT state into the HTF floating candle mark.
+// This is also what makes historical CSMT redraw after reload.
+// ----------------------------------------------------------
+csmt_store_mark(int mark_time, bool is_bear, string name, float y1, float y2, int t1, int t2) =>
+    int idx = ensure_htf_mark(mark_time)
+    HTFMark mk = array.get(htf_marks, idx)
+    mk.ssmt := true
+    mk.ssmt_bear := is_bear
+    mk.ssmt_name := name
+    mk.ssmt_y1 := y1
+    mk.ssmt_y2 := y2
+    mk.ssmt_t1 := t1
+    mk.ssmt_t2 := t2
+    array.set(htf_marks, idx, mk)
+
+clear_live_ssmt_mark(int mark_time) =>
+    int idx = get_htf_mark_index(mark_time)
+    if idx >= 0
+        HTFMark mk = array.get(htf_marks, idx)
+        mk.ssmt := false
+        mk.ssmt_bear := false
+        mk.ssmt_name := ""
+        mk.ssmt_y1 := na
+        mk.ssmt_y2 := na
+        mk.ssmt_t1 := na
+        mk.ssmt_t2 := na
+        array.set(htf_marks, idx, mk)
+
+// ----------------------------------------------------------
+// FIRST: finalize the previous LIVE CSMT when a new HTF candle
+// starts. Never delete a confirmed CSMT here.
+// ----------------------------------------------------------
+if is_new_15m
+    if not na(csmt_live_line)
+        array.push(csmt_history_lines, csmt_live_line)
+        array.push(csmt_history_labels, csmt_live_label)
+        csmt_live_line := na
+        csmt_live_label := na
+        csmt_trim_history()
+
+
+// ----------------------------------------------------------
+// LIVE CSMT WITH EXACT SWING-TO-SWING ANCHORS
+// Bullish: exact swing low inside C2 -> running swing low in C3.
+// Bearish: exact swing high inside C2 -> running swing high in C3.
+// xloc.bar_time keeps both ends on the actual lower-timeframe bars.
+// ----------------------------------------------------------
+bool csmt_exact_anchor_ready = not na(csmt_prev_h_time) and not na(csmt_prev_l_time) and not na(csmt_run_h_time) and not na(csmt_run_l_time)
+
+if csmt_bear and csmt_exact_anchor_ready
+    string csm_name = csmt_get_name(csmt_bear_s1, csmt_bear_s2)
+    int bear_x1 = csmt_prev_h_time
+    float bear_y1 = csmt_prev_h
+    int bear_x2 = csmt_run_h_time
+    float bear_y2 = csmt_run_h
+    if na(csmt_live_line)
+        csmt_live_line := line.new(x1=bear_x1, y1=bear_y1, x2=bear_x2, y2=bear_y2, xloc=xloc.bar_time, color=col_smt_bear, width=smt_line_width, style=get_line_style(smt_line_style))
+        csmt_live_label := label.new(x=get_smt_lbl_x(bear_x1, bear_x2, smt_text_align), y=math.avg(bear_y1, bear_y2), xloc=xloc.bar_time, text=csm_name, style=label.style_none, textcolor=smt_text_color, size=get_text_size(smt_text_size), textalign=text.align_center)
+    else
+        line.set_xy1(csmt_live_line, bear_x1, bear_y1)
+        line.set_xy2(csmt_live_line, bear_x2, bear_y2)
+        label.set_xy(csmt_live_label, get_smt_lbl_x(bear_x1, bear_x2, smt_text_align), math.avg(bear_y1, bear_y2))
+        label.set_text(csmt_live_label, csm_name)
+    // Floating HTF panel still maps by HTF candle start times.
+    csmt_store_mark(csmt_c3_time, true, csm_name, bear_y1, bear_y2, csmt_c2_time, csmt_c3_time)
+else if csmt_bull and csmt_exact_anchor_ready
+    string csm_name = csmt_get_name(csmt_bull_s1, csmt_bull_s2)
+    int bull_x1 = csmt_prev_l_time
+    float bull_y1 = csmt_prev_l
+    int bull_x2 = csmt_run_l_time
+    float bull_y2 = csmt_run_l
+    if na(csmt_live_line)
+        csmt_live_line := line.new(x1=bull_x1, y1=bull_y1, x2=bull_x2, y2=bull_y2, xloc=xloc.bar_time, color=col_smt_bull, width=smt_line_width, style=get_line_style(smt_line_style))
+        csmt_live_label := label.new(x=get_smt_lbl_x(bull_x1, bull_x2, smt_text_align), y=math.avg(bull_y1, bull_y2), xloc=xloc.bar_time, text=csm_name, style=label.style_none, textcolor=smt_text_color, size=get_text_size(smt_text_size), textalign=text.align_center)
+    else
+        line.set_xy1(csmt_live_line, bull_x1, bull_y1)
+        line.set_xy2(csmt_live_line, bull_x2, bull_y2)
+        label.set_xy(csmt_live_label, get_smt_lbl_x(bull_x1, bull_x2, smt_text_align), math.avg(bull_y1, bull_y2))
+        label.set_text(csmt_live_label, csm_name)
+    // Floating HTF panel still maps by HTF candle start times.
+    csmt_store_mark(csmt_c3_time, false, csm_name, bull_y1, bull_y2, csmt_c2_time, csmt_c3_time)
+else
+    // Remove only the current unconfirmed live line if the live CSMT
+    // condition disappears before the C3 candle has completed.
+    if not na(csmt_live_line)
+        line.delete(csmt_live_line)
+        if not na(csmt_live_label)
+            label.delete(csmt_live_label)
+        csmt_live_line := na
+        csmt_live_label := na
+    if not is_new_15m and not na(csmt_c3_time)
+        clear_live_ssmt_mark(csmt_c3_time)
+
+if is_new_15m
+    c15_start_time := nz(time(active_htf_tf), time)
+
+    active_bear_dist_b := na
+    active_bear_dist_lbl := na
+    active_bear_dist_eq_l := na 
+    active_bear_cont_b := na
+    active_bear_cont_lbl := na
+    active_bear_cont_eq_l := na
+    active_bear_c4_open_l := na
+    active_bear_c4_fill_b := na
+    active_bear_c3_time := na
+    active_bear_c4_time := na
+    
+    active_bull_dist_b := na
+    active_bull_dist_lbl := na
+    active_bull_dist_eq_l := na 
+    active_bull_cont_b := na
+    active_bull_cont_lbl := na
+    active_bull_cont_eq_l := na
+    active_bull_c4_open_l := na
+    active_bull_c4_fill_b := na
+    active_bull_c3_time := na
+    active_bull_c4_time := na
+    
+    smt_tracker_curr.prev_h := smt_tracker_curr.h
+    smt_tracker_curr.prev_l := smt_tracker_curr.l
+    smt_tracker_curr.prev_h_idx := smt_tracker_curr.h_idx
+    smt_tracker_curr.prev_l_idx := smt_tracker_curr.l_idx
+    smt_tracker_curr.prev_h_t := smt_tracker_curr.h_t
+    smt_tracker_curr.prev_l_t := smt_tracker_curr.l_t
+    smt_tracker_curr.h := high
+    smt_tracker_curr.l := low
+    smt_tracker_curr.h_idx := bar_index
+    smt_tracker_curr.l_idx := bar_index
+    smt_tracker_curr.h_t := c15_start_time
+    smt_tracker_curr.l_t := c15_start_time
+
+    smt_tracker1.prev_h := smt_tracker1.h
+    smt_tracker1.prev_l := smt_tracker1.l
+    smt_tracker1.prev_h_idx := smt_tracker1.h_idx
+    smt_tracker1.prev_l_idx := smt_tracker1.l_idx
+    smt_tracker1.prev_h_t := smt_tracker1.h_t
+    smt_tracker1.prev_l_t := smt_tracker1.l_t
+    smt_tracker1.h := smt_sym1_h
+    smt_tracker1.l := smt_sym1_l
+    smt_tracker1.h_idx := bar_index
+    smt_tracker1.l_idx := bar_index
+    smt_tracker1.h_t := c15_start_time
+    smt_tracker1.l_t := c15_start_time
+
+    smt_tracker2.prev_h := smt_tracker2.h
+    smt_tracker2.prev_l := smt_tracker2.l
+    smt_tracker2.prev_h_idx := smt_tracker2.h_idx
+    smt_tracker2.prev_l_idx := smt_tracker2.l_idx
+    smt_tracker2.prev_h_t := smt_tracker2.h_t
+    smt_tracker2.prev_l_t := smt_tracker2.l_t
+    smt_tracker2.h := smt_sym2_h
+    smt_tracker2.l := smt_sym2_l
+    smt_tracker2.h_idx := bar_index
+    smt_tracker2.l_idx := bar_index
+    smt_tracker2.h_t := c15_start_time
+    smt_tracker2.l_t := c15_start_time
+
+    bool will_draw_bear_c3 = allow_bear and use_frac and p15_h_swept and close[1] <= p15_h
+    bool will_draw_bull_c3 = allow_bull and use_frac and p15_l_swept and close[1] >= p15_l
+
+    if allow_bear and pending_bear_c4
+        if not will_draw_bear_c3
+            float c3_equilibrium = math.avg(c15_h, c15_l)
+            if bear_c3_mid >= open
+                if use_cont
+                    active_bear_c4_invalid_eq := c3_equilibrium
+                    box c4_b = na
+                    float bear_c4_text_pad = math.max((c15_h - c15_l) * 0.03, syminfo.mintick * 5)
+                    label c4_lbl = label.new(x=bar_index, y=c15_h + bear_c4_text_pad, text="C4", style=label.style_none, textcolor=manip_txt_col, size=chart_text_size, textalign=text.align_left)
+                    line c4_eq_l = line.new(x1=bar_index, y1=c3_equilibrium, x2=bar_index + 1, y2=c3_equilibrium, color=col_c4_eq_line, style=c4_eq_style, width=c4_eq_width)
+                    if show_bear_c4_quartiles
+                        float bear_c4_open = open
+                        line bear_c4_open_l = line.new(x1=bar_index, y1=bear_c4_open, x2=bar_index + 1, y2=bear_c4_open, color=col_bear_c4_quartile, style=bear_c4_quartile_style, width=bear_c4_quartile_width)
+                        active_bear_c4_open_l := bear_c4_open_l
+                        array.push(quartile_history_lines, bear_c4_open_l)
+                        array.push(quartile_line_owner_ids, bear_c3_id)
+                        if show_bear_c4_fill
+                            box bear_c4_open_eq_fill = box.new(left=bar_index, top=math.max(bear_c4_open, c3_equilibrium), right=bar_index + 1, bottom=math.min(bear_c4_open, c3_equilibrium), border_color=na, border_width=0, bgcolor=col_bear_c4_fill)
+                            active_bear_c4_fill_b := bear_c4_open_eq_fill
+                            array.push(quartile_history_fills, bear_c4_open_eq_fill)
+                            array.push(quartile_fill_owner_ids, bear_c3_id)
+                        trim_quartile_history()
+                    active_bear_cont_b := c4_b
+                    active_bear_cont_lbl := c4_lbl
+                    active_bear_cont_eq_l := c4_eq_l
+
+                    int c4_mark_time = c15_start_time
+                    int c4_mark_idx = ensure_htf_mark(c4_mark_time)
+                    HTFMark c4_mark = array.get(htf_marks, c4_mark_idx)
+                    c4_mark.xc2 := false
+                    c4_mark.xc2_psp := false
+                    c4_mark.c4 := true
+                    array.set(htf_marks, c4_mark_idx, c4_mark)
+                    delete_ltf_xc2_at_time(c4_mark_time)
+                    active_bear_c4_time := c4_mark_time
+
+                    if array.size(bear_manips) > 0
+                        for i = 0 to array.size(bear_manips) - 1
+                            ManipDrawings md = array.get(bear_manips, i)
+                            if md.id == bear_c3_id
+                                md.cont_b := c4_b
+                                md.cont_lbl := c4_lbl
+                                md.cont_eq_l := c4_eq_l
+                                md.c4_time := c4_mark_time
+                                break
+        pending_bear_c4 := false
+
+    if allow_bull and pending_bull_c4
+        if not will_draw_bull_c3
+            float c3_equilibrium = math.avg(c15_h, c15_l)
+            if bull_c3_mid <= open
+                if use_cont
+                    active_bull_c4_invalid_eq := c3_equilibrium
+                    box c4_b = na
+                    float bull_c4_text_pad = math.max((c15_h - c15_l) * 0.03, syminfo.mintick * 5)
+                    label c4_lbl = label.new(x=bar_index, y=c15_l - bull_c4_text_pad, text="C4", style=label.style_none, textcolor=manip_txt_col, size=chart_text_size, textalign=text.align_left)
+                    line c4_eq_l = line.new(x1=bar_index, y1=c3_equilibrium, x2=bar_index + 1, y2=c3_equilibrium, color=col_c4_eq_line, style=c4_eq_style, width=c4_eq_width)
+                    if show_bull_c4_quartiles
+                        float bull_c4_open = open
+                        line bull_c4_open_l = line.new(x1=bar_index, y1=bull_c4_open, x2=bar_index + 1, y2=bull_c4_open, color=col_bull_c4_quartile, style=bull_c4_quartile_style, width=bull_c4_quartile_width)
+                        active_bull_c4_open_l := bull_c4_open_l
+                        array.push(quartile_history_lines, bull_c4_open_l)
+                        array.push(quartile_line_owner_ids, bull_c3_id)
+                        if show_bull_c4_fill
+                            box bull_c4_open_eq_fill = box.new(left=bar_index, top=math.max(bull_c4_open, c3_equilibrium), right=bar_index + 1, bottom=math.min(bull_c4_open, c3_equilibrium), border_color=na, border_width=0, bgcolor=col_bull_c4_fill)
+                            active_bull_c4_fill_b := bull_c4_open_eq_fill
+                            array.push(quartile_history_fills, bull_c4_open_eq_fill)
+                            array.push(quartile_fill_owner_ids, bull_c3_id)
+                        trim_quartile_history()
+                    active_bull_cont_b := c4_b
+                    active_bull_cont_lbl := c4_lbl
+                    active_bull_cont_eq_l := c4_eq_l
+
+                    int c4_mark_time = c15_start_time
+                    int c4_mark_idx = ensure_htf_mark(c4_mark_time)
+                    HTFMark c4_mark = array.get(htf_marks, c4_mark_idx)
+                    c4_mark.xc2 := false
+                    c4_mark.xc2_psp := false
+                    c4_mark.c4 := true
+                    array.set(htf_marks, c4_mark_idx, c4_mark)
+                    delete_ltf_xc2_at_time(c4_mark_time)
+                    active_bull_c4_time := c4_mark_time
+
+                    if array.size(bull_manips) > 0
+                        for i = 0 to array.size(bull_manips) - 1
+                            ManipDrawings md = array.get(bull_manips, i)
+                            if md.id == bull_c3_id
+                                md.cont_b := c4_b
+                                md.cont_lbl := c4_lbl
+                                md.cont_eq_l := c4_eq_l
+                                md.c4_time := c4_mark_time
+                                break
+        pending_bull_c4 := false
+
+    if use_frac
+        if allow_bear and p15_h_swept
+            if close[1] > p15_h 
+                if not na(active_bear_b)
+                    delete_cisd_for_manip(active_bear_cisd_owner)
+                    delete_ob_for_manip(active_bear_manip_id)
+                    delete_sd_projection_for_owner(active_bear_manip_id)
+                    delete_quartiles_for_owner(active_bear_manip_id)
+                    if not na(active_bear_cisd_l)
+                        line.delete(active_bear_cisd_l)
+                        active_bear_cisd_l := na
+                    if not na(active_bear_cisd_lbl)
+                        label.delete(active_bear_cisd_lbl)
+                        active_bear_cisd_lbl := na
+                    active_bear_cisd_owner := 0
+                    bear_cisd_pending := false
+                    box.delete(active_bear_b)
+                    line.delete(active_bear_l)
+                    // This sweep candidate never confirmed as C2. Delete it completely.
+                    // xC2 is reserved for a previously confirmed C2 invalidated later.
+                    if not na(active_bear_lbl)
+                        label.delete(active_bear_lbl)
+                    active_bear_b := na
+                    active_bear_l := na
+                    active_bear_lbl := na
+                    
+                    active_bear_smt_ok := false
+                    if not na(active_bear_smt_live_l)
+                        line.delete(active_bear_smt_live_l)
+                        active_bear_smt_live_l := na
+                    if not na(active_bear_smt_live_lbl)
+                        label.delete(active_bear_smt_live_lbl)
+                        active_bear_smt_live_lbl := na
+                    is_bear_sweeping := false
+            else 
+                if not na(active_bear_b)
+                    
+                    // Final C2 PSP on the confirmed manipulation candle.
+                    bool bear_c2_psp_s1 = use_psp and psp_dir_disagrees(csmt_c2_o, csmt_c2_c, cs1_o1, cs1_c1, smt_sym1_inverse)
+                    bool bear_c2_psp_s2 = use_psp and smt_second_on and psp_dir_disagrees(csmt_c2_o, csmt_c2_c, cs2_o1, cs2_c1, smt_sym2_inverse)
+                    bool bear_psp_cond = bear_c2_psp_s1 or bear_c2_psp_s2
+                    // C1 PSP belongs to the preceding model candle and becomes meaningful
+                    // only now, after this valid C2 model has confirmed.
+                    bool bear_c1_psp_s1 = use_psp and psp_dir_disagrees(csmt_c1_o, csmt_c1_c, cs1_o2, cs1_c2, smt_sym1_inverse)
+                    bool bear_c1_psp_s2 = use_psp and smt_second_on and psp_dir_disagrees(csmt_c1_o, csmt_c1_c, cs2_o2, cs2_c2, smt_sym2_inverse)
+                    bool bear_c1_psp_cond = bear_c1_psp_s1 or bear_c1_psp_s2
+                    if bear_c1_psp_cond and not na(csmt_c1_time)
+                        int c1_mark_idx = ensure_htf_mark(csmt_c1_time)
+                        HTFMark c1_mark = array.get(htf_marks, c1_mark_idx)
+                        c1_mark.c2 := false
+                        c1_mark.psp := false
+                        c1_mark.c1_psp := true
+                        c1_mark.psp_name := psp_source_name(bear_c1_psp_s1, bear_c1_psp_s2)
+                        c1_mark.psp_above := csmt_c1_c < csmt_c1_o
+                        array.set(htf_marks, c1_mark_idx, c1_mark)
+                        store_c1_psp_chart_label(csmt_c1_time, csmt_c1_h, csmt_c1_l, csmt_c1_c >= csmt_c1_o)
+                    
+                    string final_txt = active_bear_smt_ok ? "C2" : "C2" 
+                    if bear_psp_cond
+                        final_txt += "+PSP"
+                    label.set_text(active_bear_lbl, final_txt)
+
+                    int c2_mark_time = csmt_c2_time
+                    f_draw_sd_projection(true, c2_mark_time, c15_start_time, sweep_high, active_bear_manip_id)
+                    int c2_mark_idx = ensure_htf_mark(c2_mark_time)
+                    HTFMark c2_mark = array.get(htf_marks, c2_mark_idx)
+                    c2_mark.c1_psp := false
+                    c2_mark.xc2 := false
+                    c2_mark.xc2_psp := false
+                    c2_mark.c3 := false
+                    c2_mark.c4 := false
+                    c2_mark.c2 := true
+                    c2_mark.psp := bear_psp_cond
+                    c2_mark.psp_name := psp_source_name(bear_c2_psp_s1, bear_c2_psp_s2)
+                    c2_mark.psp_above := true
+                    delete_c1_psp_chart_label(c2_mark_time)
+                    if active_bear_smt_ok
+                        c2_mark.rsmt := true
+                        c2_mark.rsmt_bear := true
+                        c2_mark.rsmt_name := active_bear_smt_name
+                        c2_mark.rsmt_y1 := active_bear_smt_y1
+                        c2_mark.rsmt_y2 := active_bear_smt_y2
+                        c2_mark.rsmt_t1 := active_bear_smt_t1
+                        c2_mark.rsmt_t2 := active_bear_smt_t2
+                    array.set(htf_marks, c2_mark_idx, c2_mark)
+
+                    box.set_bgcolor(active_bear_b, col_bear_bg) 
+                    label.set_textcolor(active_bear_lbl, manip_txt_col)
+                    box.set_border_color(active_bear_b, na)
+                    
+                    box dist_b = na
+                    label dist_lbl = na
+                    line dist_eq_l = na 
+                    box cont_b = na
+                    label cont_lbl = na
+                    line cont_eq_l = na
+                    
+                    if use_dist or use_cont
+                        float prev_htf_mid = (c15_h + c15_l) / 2.0
+                        float c3_o = open
+                        float c3_top = math.max(c3_o, prev_htf_mid)
+                        float c3_bot = math.min(c3_o, prev_htf_mid)
+                        float c3_mid = math.avg(c3_top, c3_bot)
+                        
+                        if use_dist
+                            dist_b := na
+                            float bear_c3_text_pad = math.max((c15_h - c15_l) * 0.03, syminfo.mintick * 5)
+                            dist_lbl := label.new(x=bar_index, y=c15_h + bear_c3_text_pad, text="C3", style=label.style_none, textcolor=manip_txt_col, size=chart_text_size, textalign=text.align_left)
+                            dist_eq_l := line.new(x1=bar_index, y1=prev_htf_mid, x2=bar_index + 1, y2=prev_htf_mid, color=col_c3_eq_line, style=c3_eq_style, width=c3_eq_width)
+                            if show_bear_c3_quartiles
+                                float bear_c3_open = open
+                                line bear_c3_open_l = line.new(x1=bar_index, y1=bear_c3_open, x2=bar_index + 1, y2=bear_c3_open, color=col_bear_c3_quartile, style=bear_c3_quartile_style, width=bear_c3_quartile_width)
+                                array.push(quartile_history_lines, bear_c3_open_l)
+                                array.push(quartile_line_owner_ids, active_bear_manip_id)
+                                if show_bear_c3_fill
+                                    box bear_c3_open_eq_fill = box.new(left=bar_index, top=math.max(bear_c3_open, prev_htf_mid), right=bar_index + 1, bottom=math.min(bear_c3_open, prev_htf_mid), border_color=na, border_width=0, bgcolor=col_bear_c3_fill)
+                                    array.push(quartile_history_fills, bear_c3_open_eq_fill)
+                                    array.push(quartile_fill_owner_ids, active_bear_manip_id)
+                                trim_quartile_history() 
+                            active_bear_dist_b := dist_b
+                            active_bear_dist_lbl := dist_lbl
+                            active_bear_dist_eq_l := dist_eq_l 
+                            
+                            int c3_mark_time = c15_start_time
+                            int c3_mark_idx = ensure_htf_mark(c3_mark_time)
+                            HTFMark c3_mark = array.get(htf_marks, c3_mark_idx)
+                            c3_mark.xc2 := false
+                            c3_mark.xc2_psp := false
+                            c3_mark.c3 := true
+                            array.set(htf_marks, c3_mark_idx, c3_mark)
+                            delete_ltf_xc2_at_time(c3_mark_time)
+                            active_bear_c3_time := c3_mark_time
+                            
+                        pending_bear_c4 := true
+                        bear_c3_mid := c3_mid
+                        bear_c3_id := active_bear_manip_id
+                        
+                        active_bear_defense_line := sweep_high 
+
+                    line final_smt_l = na
+                    label final_smt_lbl = na
+                    if active_bear_smt_ok and smt_history
+                        final_smt_l := line.new(x1=active_bear_smt_x1, y1=active_bear_smt_y1, x2=active_bear_smt_x2, y2=active_bear_smt_y2, color=col_smt_bear, width=smt_line_width, style=get_line_style(smt_line_style))
+                        final_smt_lbl := label.new(x=get_smt_lbl_x(active_bear_smt_x1, active_bear_smt_x2, smt_text_align), y=math.avg(active_bear_smt_y1, active_bear_smt_y2), text=active_bear_smt_name, style=label.style_none, textcolor=smt_text_color, size=get_text_size(smt_text_size))
+
+                    array.push(bear_manips, ManipDrawings.new(active_bear_b, active_bear_l, active_bear_lbl, dist_b, dist_lbl, dist_eq_l, cont_b, cont_lbl, cont_eq_l, active_bear_manip_id, final_smt_l, final_smt_lbl, active_bear_defense_line, c2_mark_time, bear_psp_cond, active_bear_c3_time, active_bear_c4_time))
+                    if array.size(bear_manips) > bear_history
+                        ManipDrawings del = array.shift(bear_manips)
+                        delete_cisd_for_manip(del.id)
+                        delete_ob_for_manip(del.id)
+                        delete_sd_projection_for_owner(del.id)
+                        delete_quartiles_for_owner(del.id)
+                        box.delete(del.b)
+                        line.delete(del.l)
+                        label.delete(del.lbl)
+                        if not na(del.dist_b)
+                            box.delete(del.dist_b)
+                        if not na(del.dist_lbl)
+                            label.delete(del.dist_lbl)
+                        if not na(del.dist_eq_l)
+                            line.delete(del.dist_eq_l) 
+                        if not na(del.cont_b)
+                            box.delete(del.cont_b)
+                        if not na(del.cont_lbl)
+                            label.delete(del.cont_lbl)
+                        if not na(del.cont_eq_l)
+                            line.delete(del.cont_eq_l)
+                        if not na(del.smt_l)
+                            line.delete(del.smt_l)
+                        if not na(del.smt_lbl)
+                            label.delete(del.smt_lbl)
+        
+        if allow_bull and p15_l_swept
+            if close[1] < p15_l 
+                if not na(active_bull_b)
+                    delete_cisd_for_manip(active_bull_cisd_owner)
+                    delete_ob_for_manip(active_bull_manip_id)
+                    delete_sd_projection_for_owner(active_bull_manip_id)
+                    delete_quartiles_for_owner(active_bull_manip_id)
+                    if not na(active_bull_cisd_l)
+                        line.delete(active_bull_cisd_l)
+                        active_bull_cisd_l := na
+                    if not na(active_bull_cisd_lbl)
+                        label.delete(active_bull_cisd_lbl)
+                        active_bull_cisd_lbl := na
+                    active_bull_cisd_owner := 0
+                    bull_cisd_pending := false
+                    box.delete(active_bull_b)
+                    line.delete(active_bull_l)
+                    // This sweep candidate never confirmed as C2. Delete it completely.
+                    // xC2 is reserved for a previously confirmed C2 invalidated later.
+                    if not na(active_bull_lbl)
+                        label.delete(active_bull_lbl)
+                    active_bull_b := na
+                    active_bull_l := na
+                    active_bull_lbl := na
+                    
+                    active_bull_smt_ok := false
+                    if not na(active_bull_smt_live_l)
+                        line.delete(active_bull_smt_live_l)
+                        active_bull_smt_live_l := na
+                    if not na(active_bull_smt_live_lbl)
+                        label.delete(active_bull_smt_live_lbl)
+                        active_bull_smt_live_lbl := na
+                    is_bull_sweeping := false
+            else 
+                if not na(active_bull_b)
+
+                    // Final C2 PSP on the confirmed manipulation candle.
+                    bool bull_c2_psp_s1 = use_psp and psp_dir_disagrees(csmt_c2_o, csmt_c2_c, cs1_o1, cs1_c1, smt_sym1_inverse)
+                    bool bull_c2_psp_s2 = use_psp and smt_second_on and psp_dir_disagrees(csmt_c2_o, csmt_c2_c, cs2_o1, cs2_c1, smt_sym2_inverse)
+                    bool bull_psp_cond = bull_c2_psp_s1 or bull_c2_psp_s2
+                    // Confirm and store C1 PSP only inside this now-valid fractal model.
+                    bool bull_c1_psp_s1 = use_psp and psp_dir_disagrees(csmt_c1_o, csmt_c1_c, cs1_o2, cs1_c2, smt_sym1_inverse)
+                    bool bull_c1_psp_s2 = use_psp and smt_second_on and psp_dir_disagrees(csmt_c1_o, csmt_c1_c, cs2_o2, cs2_c2, smt_sym2_inverse)
+                    bool bull_c1_psp_cond = bull_c1_psp_s1 or bull_c1_psp_s2
+                    if bull_c1_psp_cond and not na(csmt_c1_time)
+                        int c1_mark_idx = ensure_htf_mark(csmt_c1_time)
+                        HTFMark c1_mark = array.get(htf_marks, c1_mark_idx)
+                        c1_mark.c2 := false
+                        c1_mark.psp := false
+                        c1_mark.c1_psp := true
+                        c1_mark.psp_name := psp_source_name(bull_c1_psp_s1, bull_c1_psp_s2)
+                        c1_mark.psp_above := csmt_c1_c < csmt_c1_o
+                        array.set(htf_marks, c1_mark_idx, c1_mark)
+                        store_c1_psp_chart_label(csmt_c1_time, csmt_c1_h, csmt_c1_l, csmt_c1_c >= csmt_c1_o)
+                    
+                    string final_txt = active_bull_smt_ok ? "C2" : "C2"
+                    if bull_psp_cond
+                        final_txt += "+PSP"
+                    label.set_text(active_bull_lbl, final_txt)
+
+                    int c2_mark_time = csmt_c2_time
+                    f_draw_sd_projection(false, c2_mark_time, c15_start_time, sweep_low, active_bull_manip_id)
+                    int c2_mark_idx = ensure_htf_mark(c2_mark_time)
+                    HTFMark c2_mark = array.get(htf_marks, c2_mark_idx)
+                    c2_mark.c1_psp := false
+                    c2_mark.xc2 := false
+                    c2_mark.xc2_psp := false
+                    c2_mark.c3 := false
+                    c2_mark.c4 := false
+                    c2_mark.c2 := true
+                    c2_mark.psp := bull_psp_cond
+                    c2_mark.psp_name := psp_source_name(bull_c2_psp_s1, bull_c2_psp_s2)
+                    c2_mark.psp_above := false
+                    delete_c1_psp_chart_label(c2_mark_time)
+                    if active_bull_smt_ok
+                        c2_mark.rsmt := true
+                        c2_mark.rsmt_bear := false
+                        c2_mark.rsmt_name := active_bull_smt_name
+                        c2_mark.rsmt_y1 := active_bull_smt_y1
+                        c2_mark.rsmt_y2 := active_bull_smt_y2
+                        c2_mark.rsmt_t1 := active_bull_smt_t1
+                        c2_mark.rsmt_t2 := active_bull_smt_t2
+                    array.set(htf_marks, c2_mark_idx, c2_mark)
+
+                    box.set_bgcolor(active_bull_b, col_bull_bg) 
+                    label.set_textcolor(active_bull_lbl, manip_txt_col)
+                    box.set_border_color(active_bull_b, na)
+                    
+                    box dist_b = na
+                    label dist_lbl = na
+                    line dist_eq_l = na 
+                    box cont_b = na
+                    label cont_lbl = na
+                    line cont_eq_l = na
+                    
+                    if use_dist or use_cont
+                        float prev_htf_mid = (c15_h + c15_l) / 2.0
+                        float c3_o = open
+                        float c3_top = math.max(c3_o, prev_htf_mid)
+                        float c3_bot = math.min(c3_o, prev_htf_mid)
+                        float c3_mid = math.avg(c3_top, c3_bot)
+                        
+                        if use_dist
+                            dist_b := na
+                            float bull_c3_text_pad = math.max((c15_h - c15_l) * 0.03, syminfo.mintick * 5)
+                            dist_lbl := label.new(x=bar_index, y=c15_l - bull_c3_text_pad, text="C3", style=label.style_none, textcolor=manip_txt_col, size=chart_text_size, textalign=text.align_left)
+                            dist_eq_l := line.new(x1=bar_index, y1=prev_htf_mid, x2=bar_index + 1, y2=prev_htf_mid, color=col_c3_eq_line, style=c3_eq_style, width=c3_eq_width)
+                            if show_bull_c3_quartiles
+                                float bull_c3_open = open
+                                line bull_c3_open_l = line.new(x1=bar_index, y1=bull_c3_open, x2=bar_index + 1, y2=bull_c3_open, color=col_bull_c3_quartile, style=bull_c3_quartile_style, width=bull_c3_quartile_width)
+                                array.push(quartile_history_lines, bull_c3_open_l)
+                                array.push(quartile_line_owner_ids, active_bull_manip_id)
+                                if show_bull_c3_fill
+                                    box bull_c3_open_eq_fill = box.new(left=bar_index, top=math.max(bull_c3_open, prev_htf_mid), right=bar_index + 1, bottom=math.min(bull_c3_open, prev_htf_mid), border_color=na, border_width=0, bgcolor=col_bull_c3_fill)
+                                    array.push(quartile_history_fills, bull_c3_open_eq_fill)
+                                    array.push(quartile_fill_owner_ids, active_bull_manip_id)
+                                trim_quartile_history() 
+                            active_bull_dist_b := dist_b
+                            active_bull_dist_lbl := dist_lbl
+                            active_bull_dist_eq_l := dist_eq_l 
+                            
+                            int c3_mark_time = c15_start_time
+                            int c3_mark_idx = ensure_htf_mark(c3_mark_time)
+                            HTFMark c3_mark = array.get(htf_marks, c3_mark_idx)
+                            c3_mark.xc2 := false
+                            c3_mark.xc2_psp := false
+                            c3_mark.c3 := true
+                            array.set(htf_marks, c3_mark_idx, c3_mark)
+                            delete_ltf_xc2_at_time(c3_mark_time)
+                            active_bull_c3_time := c3_mark_time
+                            
+                        pending_bull_c4 := true
+                        bull_c3_mid := c3_mid
+                        bull_c3_id := active_bull_manip_id
+                            
+                        active_bull_defense_line := sweep_low 
+
+                    line final_smt_l = na
+                    label final_smt_lbl = na
+                    if active_bull_smt_ok and smt_history
+                        final_smt_l := line.new(x1=active_bull_smt_x1, y1=active_bull_smt_y1, x2=active_bull_smt_x2, y2=active_bull_smt_y2, color=col_smt_bull, width=smt_line_width, style=get_line_style(smt_line_style))
+                        final_smt_lbl := label.new(x=get_smt_lbl_x(active_bull_smt_x1, active_bull_smt_x2, smt_text_align), y=math.avg(active_bull_smt_y1, active_bull_smt_y2), text=active_bull_smt_name, style=label.style_none, textcolor=smt_text_color, size=get_text_size(smt_text_size))
+
+                    array.push(bull_manips, ManipDrawings.new(active_bull_b, active_bull_l, active_bull_lbl, dist_b, dist_lbl, dist_eq_l, cont_b, cont_lbl, cont_eq_l, active_bull_manip_id, final_smt_l, final_smt_lbl, active_bull_defense_line, c2_mark_time, bull_psp_cond, active_bull_c3_time, active_bull_c4_time))
+                    if array.size(bull_manips) > bull_history
+                        ManipDrawings del = array.shift(bull_manips)
+                        delete_cisd_for_manip(del.id)
+                        delete_ob_for_manip(del.id)
+                        delete_sd_projection_for_owner(del.id)
+                        delete_quartiles_for_owner(del.id)
+                        box.delete(del.b)
+                        line.delete(del.l)
+                        label.delete(del.lbl)
+                        if not na(del.dist_b)
+                            box.delete(del.dist_b)
+                        if not na(del.dist_lbl)
+                            label.delete(del.dist_lbl)
+                        if not na(del.dist_eq_l)
+                            line.delete(del.dist_eq_l) 
+                        if not na(del.cont_b)
+                            box.delete(del.cont_b)
+                        if not na(del.cont_lbl)
+                            label.delete(del.cont_lbl)
+                        if not na(del.cont_eq_l)
+                            line.delete(del.cont_eq_l)
+                        if not na(del.smt_l)
+                            line.delete(del.smt_l)
+                        if not na(del.smt_lbl)
+                            label.delete(del.smt_lbl)
+
+    p15_h := c15_h, p15_h_bar := c15_h_bar
+    p15_l := c15_l, p15_l_bar := c15_l_bar
+    
+    c15_h := high, c15_h_bar := bar_index
+    c15_l := low,  c15_l_bar := bar_index
+    c15_start_bar := bar_index
+    c15_open := open 
+    
+    p15_h_swept := false, p15_l_swept := false
+    
+    is_bear_sweeping := false, active_bear_b := na, active_bear_l := na, active_bear_lbl := na, active_bear_manip_id := 0
+    is_bull_sweeping := false, active_bull_b := na, active_bull_l := na, active_bull_lbl := na, active_bull_manip_id := 0
+    
+    active_bear_smt_ok := false, active_bull_smt_ok := false
+    if not na(active_bear_smt_live_l)
+        line.delete(active_bear_smt_live_l)
+        active_bear_smt_live_l := na
+    if not na(active_bear_smt_live_lbl)
+        label.delete(active_bear_smt_live_lbl)
+        active_bear_smt_live_lbl := na
+    if not na(active_bull_smt_live_l)
+        line.delete(active_bull_smt_live_l)
+        active_bull_smt_live_l := na
+    if not na(active_bull_smt_live_lbl)
+        label.delete(active_bull_smt_live_lbl)
+        active_bull_smt_live_lbl := na
+else
+    if high > c15_h
+        c15_h := high, c15_h_bar := bar_index
+    if low < c15_l
+        c15_l := low, c15_l_bar := bar_index
+        
+    if not na(smt_tracker_curr.h) and high > smt_tracker_curr.h
+        smt_tracker_curr.h := high
+        smt_tracker_curr.h_idx := bar_index
+        smt_tracker_curr.h_t := nz(time(active_htf_tf), time)
+    if not na(smt_tracker_curr.l) and low < smt_tracker_curr.l
+        smt_tracker_curr.l := low
+        smt_tracker_curr.l_idx := bar_index
+        smt_tracker_curr.l_t := nz(time(active_htf_tf), time)
+
+    if not na(smt_sym1_h) and (na(smt_tracker1.h) or smt_sym1_h > smt_tracker1.h)
+        smt_tracker1.h := smt_sym1_h
+        smt_tracker1.h_idx := bar_index
+        smt_tracker1.h_t := nz(time(active_htf_tf), time)
+    if not na(smt_sym1_l) and (na(smt_tracker1.l) or smt_sym1_l < smt_tracker1.l)
+        smt_tracker1.l := smt_sym1_l
+        smt_tracker1.l_idx := bar_index
+        smt_tracker1.l_t := nz(time(active_htf_tf), time)
+
+    if smt_second_on and not na(smt_sym2_h) and (na(smt_tracker2.h) or smt_sym2_h > smt_tracker2.h)
+        smt_tracker2.h := smt_sym2_h
+        smt_tracker2.h_idx := bar_index
+        smt_tracker2.h_t := nz(time(active_htf_tf), time)
+    if smt_second_on and not na(smt_sym2_l) and (na(smt_tracker2.l) or smt_sym2_l < smt_tracker2.l)
+        smt_tracker2.l := smt_sym2_l
+        smt_tracker2.l_idx := bar_index
+        smt_tracker2.l_t := nz(time(active_htf_tf), time)
+
+// --- LIVE DYNAMIC C3/C4 TEXT PLACEMENT BY SWING HIGH/LOW ---
+float c3_c4_text_swing_pad = math.max((c15_h - c15_l) * 0.03, syminfo.mintick * 5)
+if not na(active_bear_dist_lbl)
+    label.set_y(active_bear_dist_lbl, c15_h + c3_c4_text_swing_pad)
+if not na(active_bear_cont_lbl)
+    label.set_y(active_bear_cont_lbl, c15_h + c3_c4_text_swing_pad)
+if not na(active_bull_dist_lbl)
+    label.set_y(active_bull_dist_lbl, c15_l - c3_c4_text_swing_pad)
+if not na(active_bull_cont_lbl)
+    label.set_y(active_bull_cont_lbl, c15_l - c3_c4_text_swing_pad)
+
+// --- LIVE DYNAMIC C3/C4 OPEN + EQ + FILL EXTENSION ---
+// Current C3/C4 drawings end only at the latest printed chart bar.
+// They grow one bar at a time and stop automatically when the next HTF candle starts.
+if not na(active_bear_dist_eq_l)
+    line.set_x2(active_bear_dist_eq_l, bar_index + 1)
+if not na(active_bull_dist_eq_l)
+    line.set_x2(active_bull_dist_eq_l, bar_index + 1)
+if not na(active_bear_cont_eq_l)
+    line.set_x2(active_bear_cont_eq_l, bar_index + 1)
+if not na(active_bull_cont_eq_l)
+    line.set_x2(active_bull_cont_eq_l, bar_index + 1)
+
+// Opening-price lines are stored in this history array. Extend only objects
+// belonging to the currently printing HTF candle.
+if array.size(quartile_history_lines) > 0
+    for dynamic_i = 0 to array.size(quartile_history_lines) - 1
+        line dynamic_open_line = array.get(quartile_history_lines, dynamic_i)
+        if line.get_x1(dynamic_open_line) == c15_start_bar
+            line.set_x2(dynamic_open_line, bar_index + 1)
+
+// Open-to-EQ fill follows the same live right edge.
+if array.size(quartile_history_fills) > 0
+    for dynamic_i = 0 to array.size(quartile_history_fills) - 1
+        box dynamic_open_eq_fill = array.get(quartile_history_fills, dynamic_i)
+        if box.get_left(dynamic_open_eq_fill) == c15_start_bar
+            box.set_right(dynamic_open_eq_fill, bar_index + 1)
+
+// ==========================================================
+// xC4 INVALIDATION: LTF BODY CLOSE THROUGH FIXED C3 EQ
+// Bullish C4: an LTF close below C3 EQ invalidates C4.
+// Bearish C4: an LTF close above C3 EQ invalidates C4.
+// Wick-only penetration and equality do not invalidate C4.
+// This check is active only during the C4 HTF candle because
+// active references reset when the next HTF candle begins.
+// ==========================================================
+bool bear_c4_invalid = barstate.isconfirmed and use_cont and allow_bear and not na(active_bear_cont_lbl) and not na(active_bear_c4_invalid_eq) and close > active_bear_c4_invalid_eq
+if bear_c4_invalid
+    label.set_text(active_bear_cont_lbl, "xC4")
+    label.set_textcolor(active_bear_cont_lbl, color.red)
+    if not na(active_bear_cont_b)
+        box.delete(active_bear_cont_b)
+    if not na(active_bear_cont_eq_l)
+        line.delete(active_bear_cont_eq_l)
+    if not na(active_bear_c4_open_l)
+        line.delete(active_bear_c4_open_l)
+    if not na(active_bear_c4_fill_b)
+        box.delete(active_bear_c4_fill_b)
+    if not na(active_bear_c4_time)
+        int inv_bear_c4_idx = get_htf_mark_index(active_bear_c4_time)
+        if inv_bear_c4_idx >= 0
+            HTFMark inv_bear_c4_mark = array.get(htf_marks, inv_bear_c4_idx)
+            inv_bear_c4_mark.c4 := false
+            array.set(htf_marks, inv_bear_c4_idx, inv_bear_c4_mark)
+    active_bear_cont_b := na
+    active_bear_cont_lbl := na
+    active_bear_cont_eq_l := na
+    active_bear_c4_open_l := na
+    active_bear_c4_fill_b := na
+    active_bear_c4_time := na
+    active_bear_c4_invalid_eq := na
+
+bool bull_c4_invalid = barstate.isconfirmed and use_cont and allow_bull and not na(active_bull_cont_lbl) and not na(active_bull_c4_invalid_eq) and close < active_bull_c4_invalid_eq
+if bull_c4_invalid
+    label.set_text(active_bull_cont_lbl, "xC4")
+    label.set_textcolor(active_bull_cont_lbl, color.red)
+    if not na(active_bull_cont_b)
+        box.delete(active_bull_cont_b)
+    if not na(active_bull_cont_eq_l)
+        line.delete(active_bull_cont_eq_l)
+    if not na(active_bull_c4_open_l)
+        line.delete(active_bull_c4_open_l)
+    if not na(active_bull_c4_fill_b)
+        box.delete(active_bull_c4_fill_b)
+    if not na(active_bull_c4_time)
+        int inv_bull_c4_idx = get_htf_mark_index(active_bull_c4_time)
+        if inv_bull_c4_idx >= 0
+            HTFMark inv_bull_c4_mark = array.get(htf_marks, inv_bull_c4_idx)
+            inv_bull_c4_mark.c4 := false
+            array.set(htf_marks, inv_bull_c4_idx, inv_bull_c4_mark)
+    active_bull_cont_b := na
+    active_bull_cont_lbl := na
+    active_bull_cont_eq_l := na
+    active_bull_c4_open_l := na
+    active_bull_c4_fill_b := na
+    active_bull_c4_time := na
+    active_bull_c4_invalid_eq := na
+
+if array.size(bear_manips) > 0
+    for i = array.size(bear_manips) - 1 to 0
+        ManipDrawings md = array.get(bear_manips, i)
+        if not na(md.def_line) and high >= md.def_line
+            if not na(md.c3_time)
+                int idx3 = get_htf_mark_index(md.c3_time)
+                if idx3 >= 0
+                    HTFMark mk = array.get(htf_marks, idx3)
+                    mk.c3 := false
+                    array.set(htf_marks, idx3, mk)
+            if not na(md.c4_time)
+                int idx4 = get_htf_mark_index(md.c4_time)
+                if idx4 >= 0
+                    HTFMark mk = array.get(htf_marks, idx4)
+                    mk.c4 := false
+                    array.set(htf_marks, idx4, mk)
+                    
+            box.delete(md.b)
+            line.delete(md.l)
+            bool bear_old_c2_has_psp = use_psp and md.c2_psp
+            store_xc2_label(md.lbl, bear_xc2_history, bear_xc2_times, md.c2_time, bear_history, bear_old_c2_has_psp)
+            if not na(md.dist_b)
+                box.delete(md.dist_b)
+            if not na(md.dist_lbl)
+                label.delete(md.dist_lbl)
+                if not na(md.dist_eq_l)               
+                    line.delete(md.dist_eq_l)         
+            if not na(md.cont_b)
+                box.delete(md.cont_b)
+            if not na(md.cont_lbl)
+                label.delete(md.cont_lbl)
+            if not na(md.cont_eq_l)
+                line.delete(md.cont_eq_l)
+            if not na(md.smt_l)
+                line.delete(md.smt_l)
+            if not na(md.smt_lbl)
+                label.delete(md.smt_lbl)
+            delete_cisd_for_manip(md.id)
+            delete_ob_for_manip(md.id)
+            delete_sd_projection_for_owner(md.id)
+            delete_quartiles_for_owner(md.id)
+            array.remove(bear_manips, i)
+
+if array.size(bull_manips) > 0
+    for i = array.size(bull_manips) - 1 to 0
+        ManipDrawings md = array.get(bull_manips, i)
+        if not na(md.def_line) and low <= md.def_line
+            if not na(md.c3_time)
+                int idx3 = get_htf_mark_index(md.c3_time)
+                if idx3 >= 0
+                    HTFMark mk = array.get(htf_marks, idx3)
+                    mk.c3 := false
+                    array.set(htf_marks, idx3, mk)
+            if not na(md.c4_time)
+                int idx4 = get_htf_mark_index(md.c4_time)
+                if idx4 >= 0
+                    HTFMark mk = array.get(htf_marks, idx4)
+                    mk.c4 := false
+                    array.set(htf_marks, idx4, mk)
+                    
+            box.delete(md.b)
+            line.delete(md.l)
+            bool bull_old_c2_has_psp = use_psp and md.c2_psp
+            store_xc2_label(md.lbl, bull_xc2_history, bull_xc2_times, md.c2_time, bull_history, bull_old_c2_has_psp)
+            if not na(md.dist_b)
+                box.delete(md.dist_b)
+            if not na(md.dist_lbl)
+                label.delete(md.dist_lbl)
+                if not na(md.dist_eq_l)               
+                    line.delete(md.dist_eq_l)         
+            if not na(md.cont_b)
+                box.delete(md.cont_b)
+            if not na(md.cont_lbl)
+                label.delete(md.cont_lbl)
+            if not na(md.cont_eq_l)
+                line.delete(md.cont_eq_l)
+            if not na(md.smt_l)
+                line.delete(md.smt_l)
+            if not na(md.smt_lbl)
+                label.delete(md.smt_lbl)
+            delete_cisd_for_manip(md.id)
+            delete_ob_for_manip(md.id)
+            delete_sd_projection_for_owner(md.id)
+            delete_quartiles_for_owner(md.id)
+            array.remove(bull_manips, i)
+
+// ==========================================
+// C2 MANIPULATION + PSP RECOGNITION
+// ==========================================
+if use_frac and not na(p15_h) and not na(p15_l)
+    // --- BEARISH SWEEP INIT ---
+    if allow_bear and not p15_h_swept and high > p15_h
+        p15_h_swept := true
+        is_bear_sweeping := true
+        sweep_high := high
+        bear_new_high_made := true 
+            
+        next_manip_id += 1
+        active_bear_manip_id := next_manip_id
+        bear_cisd_done_owner := 0
+        latest_bear_manip_id := next_manip_id
+        latest_bear_manip_start := c15_start_bar
+        
+        active_bear_b := box.new(left=c15_start_bar, top=sweep_high, right=c15_start_bar + matched_bar_count, bottom=p15_h, border_color=na, bgcolor=na, border_width=0)
+        active_bear_l := line.new(x1=p15_h_bar, y1=p15_h, x2=c15_start_bar + matched_bar_count, y2=p15_h, color=col_bear_line, width=1)
+        
+        active_bear_smt_ok := false
+        if use_smt
+            [bear_smt_ok, bear_smt_x1, bear_smt_x2, bear_smt_y1, bear_smt_y2, bear_smt_t1, bear_smt_t2, bear_smt_name] = CheckSMTDivergence(true, smt_tracker_curr, smt_tracker1, smt_tracker2, true, smt_second_on, smt_sym1_inverse, smt_sym2_inverse, smt_sym1_ticker, smt_sym2_ticker)
+            if bear_smt_ok
+                active_bear_smt_ok := true
+                active_bear_smt_x1 := bear_smt_x1
+                active_bear_smt_x2 := bear_smt_x2
+                active_bear_smt_y1 := bear_smt_y1
+                active_bear_smt_y2 := bear_smt_y2
+                active_bear_smt_t1 := bear_smt_t1
+                active_bear_smt_t2 := bear_smt_t2
+                active_bear_smt_name := bear_smt_name
+        
+        active_bear_lbl := label.new(x=c15_start_bar + int(math.round(matched_bar_count / 2.0)), y=sweep_high + math.max((sweep_high - p15_h) * 0.08, syminfo.mintick * 10), text="C2", style=label.style_none, textcolor=na, size=chart_text_size, textalign=text.align_center)
+
+    // --- BEARISH SWEEP UPDATE ---
+    if allow_bear and is_bear_sweeping and not na(active_bear_b)
+        if high > sweep_high
+            sweep_high := high
+            bear_new_high_made := true 
+            box.set_top(active_bear_b, sweep_high)
+            label.set_y(active_bear_lbl, sweep_high + math.max((sweep_high - p15_h) * 0.08, syminfo.mintick * 10))
+
+        if use_smt
+            [bear_smt_ok, bear_smt_x1, bear_smt_x2, bear_smt_y1, bear_smt_y2, bear_smt_t1, bear_smt_t2, bear_smt_name] = CheckSMTDivergence(true, smt_tracker_curr, smt_tracker1, smt_tracker2, true, smt_second_on, smt_sym1_inverse, smt_sym2_inverse, smt_sym1_ticker, smt_sym2_ticker)
+            if bear_smt_ok
+                active_bear_smt_ok := true
+                active_bear_smt_x1 := bear_smt_x1
+                active_bear_smt_x2 := bear_smt_x2
+                active_bear_smt_y1 := bear_smt_y1
+                active_bear_smt_y2 := bear_smt_y2
+                active_bear_smt_t1 := bear_smt_t1
+                active_bear_smt_t2 := bear_smt_t2
+                active_bear_smt_name := bear_smt_name
+            else
+                active_bear_smt_ok := false
+        else
+            active_bear_smt_ok := false
+
+        bool bear_live_psp_s1 = use_psp and psp_dir_disagrees(c15_open, close, cs1_live_o, cs1_live_c, smt_sym1_inverse)
+        bool bear_live_psp_s2 = use_psp and smt_second_on and psp_dir_disagrees(c15_open, close, cs2_live_o, cs2_live_c, smt_sym2_inverse)
+        bool bear_live_psp = bear_live_psp_s1 or bear_live_psp_s2
+
+        if close <= p15_h
+            box.set_bgcolor(active_bear_b, col_bear_bg)
+            label.set_textcolor(active_bear_lbl, manip_txt_col)
+            box.set_border_color(active_bear_b, na)
+
+            string bear_live_txt = "C2"
+            if active_bear_smt_ok
+                bear_live_txt += ""
+            if bear_live_psp
+                bear_live_txt += "+PSP"
+            label.set_text(active_bear_lbl, bear_live_txt)
+
+            if use_smt and active_bear_smt_ok
+                if not na(active_bear_smt_live_l)
+                    line.delete(active_bear_smt_live_l)
+                if not na(active_bear_smt_live_lbl)
+                    label.delete(active_bear_smt_live_lbl)
+                active_bear_smt_live_l := line.new(x1=active_bear_smt_x1, y1=active_bear_smt_y1, x2=active_bear_smt_x2, y2=active_bear_smt_y2, color=col_smt_bear, width=smt_line_width, style=get_line_style(smt_line_style))
+                active_bear_smt_live_lbl := label.new(x=get_smt_lbl_x(active_bear_smt_x1, active_bear_smt_x2, smt_text_align), y=math.avg(active_bear_smt_y1, active_bear_smt_y2), text=active_bear_smt_name, style=label.style_none, textcolor=smt_text_color, size=get_text_size(smt_text_size), textalign=text.align_center)
+            else
+                if not na(active_bear_smt_live_l)
+                    line.delete(active_bear_smt_live_l)
+                    active_bear_smt_live_l := na
+                if not na(active_bear_smt_live_lbl)
+                    label.delete(active_bear_smt_live_lbl)
+                    active_bear_smt_live_lbl := na
+
+            int bear_live_mark_time = c15_start_time
+            int bear_live_mark_idx = ensure_htf_mark(bear_live_mark_time)
+            HTFMark bear_live_mark = array.get(htf_marks, bear_live_mark_idx)
+            bear_live_mark.c1_psp := false
+            bear_live_mark.xc2 := false
+            bear_live_mark.xc2_psp := false
+            bear_live_mark.c3 := false
+            bear_live_mark.c4 := false
+            bear_live_mark.c2 := true
+            bear_live_mark.psp := bear_live_psp
+            bear_live_mark.psp_name := psp_source_name(bear_live_psp_s1, bear_live_psp_s2)
+            bear_live_mark.psp_above := true
+            delete_c1_psp_chart_label(bear_live_mark_time)
+            bear_live_mark.rsmt := active_bear_smt_ok
+            bear_live_mark.rsmt_bear := true
+            bear_live_mark.rsmt_name := active_bear_smt_ok ? active_bear_smt_name : ""
+            bear_live_mark.rsmt_y1 := active_bear_smt_ok ? active_bear_smt_y1 : na
+            bear_live_mark.rsmt_y2 := active_bear_smt_ok ? active_bear_smt_y2 : na
+            bear_live_mark.rsmt_t1 := active_bear_smt_ok ? active_bear_smt_t1 : na
+            bear_live_mark.rsmt_t2 := active_bear_smt_ok ? active_bear_smt_t2 : na
+            array.set(htf_marks, bear_live_mark_idx, bear_live_mark)
+        else
+            box.set_bgcolor(active_bear_b, na)
+            label.set_textcolor(active_bear_lbl, na)
+            box.set_border_color(active_bear_b, na)
+            label.set_text(active_bear_lbl, "")
+            
+            if not na(active_bear_smt_live_l)
+                line.delete(active_bear_smt_live_l)
+                active_bear_smt_live_l := na
+            if not na(active_bear_smt_live_lbl)
+                label.delete(active_bear_smt_live_lbl)
+                active_bear_smt_live_lbl := na
+                
+            int bear_live_mark_time = c15_start_time
+            int bear_live_mark_idx = ensure_htf_mark(bear_live_mark_time)
+            HTFMark bear_live_mark = array.get(htf_marks, bear_live_mark_idx)
+            bear_live_mark.c2 := false
+            bear_live_mark.psp := false
+            bear_live_mark.psp_name := ""
+            bear_live_mark.rsmt := false
+            bear_live_mark.rsmt_name := ""
+            bear_live_mark.rsmt_y1 := na
+            bear_live_mark.rsmt_y2 := na
+            bear_live_mark.rsmt_t1 := na
+            bear_live_mark.rsmt_t2 := na
+            array.set(htf_marks, bear_live_mark_idx, bear_live_mark)
+
+    // --- BULLISH SWEEP INIT ---
+    if allow_bull and not p15_l_swept and low < p15_l
+        p15_l_swept := true
+        is_bull_sweeping := true
+        sweep_low := low
+        bull_new_low_made := true 
+            
+        next_manip_id += 1
+        active_bull_manip_id := next_manip_id
+        bull_cisd_done_owner := 0
+        latest_bull_manip_id := next_manip_id
+        latest_bull_manip_start := c15_start_bar
+
+        active_bull_b := box.new(left=c15_start_bar, top=p15_l, right=c15_start_bar + matched_bar_count, bottom=sweep_low, border_color=na, bgcolor=na, border_width=0)
+        active_bull_l := line.new(x1=p15_l_bar, y1=p15_l, x2=c15_start_bar + matched_bar_count, y2=p15_l, color=col_bull_line, width=1)
+
+        active_bull_smt_ok := false
+        if use_smt
+            [bull_smt_ok, bull_smt_x1, bull_smt_x2, bull_smt_y1, bull_smt_y2, bull_smt_t1, bull_smt_t2, bull_smt_name] = CheckSMTDivergence(false, smt_tracker_curr, smt_tracker1, smt_tracker2, true, smt_second_on, smt_sym1_inverse, smt_sym2_inverse, smt_sym1_ticker, smt_sym2_ticker)
+            if bull_smt_ok
+                active_bull_smt_ok := true
+                active_bull_smt_x1 := bull_smt_x1
+                active_bull_smt_x2 := bull_smt_x2
+                active_bull_smt_y1 := bull_smt_y1
+                active_bull_smt_y2 := bull_smt_y2
+                active_bull_smt_t1 := bull_smt_t1
+                active_bull_smt_t2 := bull_smt_t2
+                active_bull_smt_name := bull_smt_name
+
+        active_bull_lbl := label.new(x=c15_start_bar + int(math.round(matched_bar_count / 2.0)), y=sweep_low - math.max((p15_l - sweep_low) * 0.08, syminfo.mintick * 10), text="C2", style=label.style_none, textcolor=na, size=chart_text_size, textalign=text.align_center)
+
+    // --- BULLISH SWEEP UPDATE ---
+    if allow_bull and is_bull_sweeping and not na(active_bull_b)
+        if low < sweep_low
+            sweep_low := low
+            bull_new_low_made := true 
+            box.set_bottom(active_bull_b, sweep_low)
+            label.set_y(active_bull_lbl, sweep_low - math.max((p15_l - sweep_low) * 0.08, syminfo.mintick * 10))
+
+        if use_smt
+            [bull_smt_ok, bull_smt_x1, bull_smt_x2, bull_smt_y1, bull_smt_y2, bull_smt_t1, bull_smt_t2, bull_smt_name] = CheckSMTDivergence(false, smt_tracker_curr, smt_tracker1, smt_tracker2, true, smt_second_on, smt_sym1_inverse, smt_sym2_inverse, smt_sym1_ticker, smt_sym2_ticker)
+            if bull_smt_ok
+                active_bull_smt_ok := true
+                active_bull_smt_x1 := bull_smt_x1
+                active_bull_smt_x2 := bull_smt_x2
+                active_bull_smt_y1 := bull_smt_y1
+                active_bull_smt_y2 := bull_smt_y2
+                active_bull_smt_t1 := bull_smt_t1
+                active_bull_smt_t2 := bull_smt_t2
+                active_bull_smt_name := bull_smt_name
+            else
+                active_bull_smt_ok := false
+        else
+            active_bull_smt_ok := false
+
+        bool bull_live_psp_s1 = use_psp and psp_dir_disagrees(c15_open, close, cs1_live_o, cs1_live_c, smt_sym1_inverse)
+        bool bull_live_psp_s2 = use_psp and smt_second_on and psp_dir_disagrees(c15_open, close, cs2_live_o, cs2_live_c, smt_sym2_inverse)
+        bool bull_live_psp = bull_live_psp_s1 or bull_live_psp_s2
+
+        if close >= p15_l
+            box.set_bgcolor(active_bull_b, col_bull_bg)
+            label.set_textcolor(active_bull_lbl, manip_txt_col)
+            box.set_border_color(active_bull_b, na)
+
+            string bull_live_txt = "C2"
+            if active_bull_smt_ok
+                bull_live_txt += ""
+            if bull_live_psp
+                bull_live_txt += "+PSP"
+            label.set_text(active_bull_lbl, bull_live_txt)
+
+            if use_smt and active_bull_smt_ok
+                if not na(active_bull_smt_live_l)
+                    line.delete(active_bull_smt_live_l)
+                if not na(active_bull_smt_live_lbl)
+                    label.delete(active_bull_smt_live_lbl)
+                active_bull_smt_live_l := line.new(x1=active_bull_smt_x1, y1=active_bull_smt_y1, x2=active_bull_smt_x2, y2=active_bull_smt_y2, color=col_smt_bull, width=smt_line_width, style=get_line_style(smt_line_style))
+                active_bull_smt_live_lbl := label.new(x=get_smt_lbl_x(active_bull_smt_x1, active_bull_smt_x2, smt_text_align), y=math.avg(active_bull_smt_y1, active_bull_smt_y2), text=active_bull_smt_name, style=label.style_none, textcolor=smt_text_color, size=get_text_size(smt_text_size), textalign=text.align_center)
+            else
+                if not na(active_bull_smt_live_l)
+                    line.delete(active_bull_smt_live_l)
+                    active_bull_smt_live_l := na
+                if not na(active_bull_smt_live_lbl)
+                    label.delete(active_bull_smt_live_lbl)
+                    active_bull_smt_live_lbl := na
+
+            int bull_live_mark_time = c15_start_time
+            int bull_live_mark_idx = ensure_htf_mark(bull_live_mark_time)
+            HTFMark bull_live_mark = array.get(htf_marks, bull_live_mark_idx)
+            bull_live_mark.c1_psp := false
+            bull_live_mark.xc2 := false
+            bull_live_mark.xc2_psp := false
+            bull_live_mark.c3 := false
+            bull_live_mark.c4 := false
+            bull_live_mark.c2 := true
+            bull_live_mark.psp := bull_live_psp
+            bull_live_mark.psp_name := psp_source_name(bull_live_psp_s1, bull_live_psp_s2)
+            bull_live_mark.psp_above := false
+            delete_c1_psp_chart_label(bull_live_mark_time)
+            bull_live_mark.rsmt := active_bull_smt_ok
+            bull_live_mark.rsmt_bear := false
+            bull_live_mark.rsmt_name := active_bull_smt_ok ? active_bull_smt_name : ""
+            bull_live_mark.rsmt_y1 := active_bull_smt_ok ? active_bull_smt_y1 : na
+            bull_live_mark.rsmt_y2 := active_bull_smt_ok ? active_bull_smt_y2 : na
+            bull_live_mark.rsmt_t1 := active_bull_smt_ok ? active_bull_smt_t1 : na
+            bull_live_mark.rsmt_t2 := active_bull_smt_ok ? active_bull_smt_t2 : na
+            array.set(htf_marks, bull_live_mark_idx, bull_live_mark)
+        else
+            box.set_bgcolor(active_bull_b, na)
+            label.set_textcolor(active_bull_lbl, na)
+            box.set_border_color(active_bull_b, na)
+            label.set_text(active_bull_lbl, "")
+            
+            if not na(active_bull_smt_live_l)
+                line.delete(active_bull_smt_live_l)
+                active_bull_smt_live_l := na
+            if not na(active_bull_smt_live_lbl)
+                label.delete(active_bull_smt_live_lbl)
+                active_bull_smt_live_lbl := na
+                
+            int bull_live_mark_time = c15_start_time
+            int bull_live_mark_idx = ensure_htf_mark(bull_live_mark_time)
+            HTFMark bull_live_mark = array.get(htf_marks, bull_live_mark_idx)
+            bull_live_mark.c2 := false
+            bull_live_mark.psp := false
+            bull_live_mark.psp_name := ""
+            bull_live_mark.rsmt := false
+            bull_live_mark.rsmt_name := ""
+            bull_live_mark.rsmt_y1 := na
+            bull_live_mark.rsmt_y2 := na
+            bull_live_mark.rsmt_t1 := na
+            bull_live_mark.rsmt_t2 := na
+            array.set(htf_marks, bull_live_mark_idx, bull_live_mark)
+
+
+// ==========================================================
+// FINAL LIVE SMT -> FLOATING HTF RECONCILIATION
+// Runs outside sweep blocks so reset/invalidation cannot leave stale HTF SMT.
+// Only current live HTF candle is reconciled; confirmed older history is untouched.
+// ==========================================================
+if not na(c15_start_time)
+    int live_sync_idx = get_htf_mark_index(c15_start_time)
+    if live_sync_idx >= 0
+        HTFMark live_sync_mk = array.get(htf_marks, live_sync_idx)
+        bool live_bear_chart_smt = use_smt and allow_bear and is_bear_sweeping and not na(active_bear_b) and active_bear_smt_ok and close <= p15_h
+        bool live_bull_chart_smt = use_smt and allow_bull and is_bull_sweeping and not na(active_bull_b) and active_bull_smt_ok and close >= p15_l
+        if live_bear_chart_smt
+            live_sync_mk.rsmt := true
+            live_sync_mk.rsmt_bear := true
+            live_sync_mk.rsmt_name := active_bear_smt_name
+            live_sync_mk.rsmt_y1 := active_bear_smt_y1
+            live_sync_mk.rsmt_y2 := active_bear_smt_y2
+            live_sync_mk.rsmt_t1 := active_bear_smt_t1
+            live_sync_mk.rsmt_t2 := active_bear_smt_t2
+        else if live_bull_chart_smt
+            live_sync_mk.rsmt := true
+            live_sync_mk.rsmt_bear := false
+            live_sync_mk.rsmt_name := active_bull_smt_name
+            live_sync_mk.rsmt_y1 := active_bull_smt_y1
+            live_sync_mk.rsmt_y2 := active_bull_smt_y2
+            live_sync_mk.rsmt_t1 := active_bull_smt_t1
+            live_sync_mk.rsmt_t2 := active_bull_smt_t2
+        else
+            live_sync_mk.rsmt := false
+            live_sync_mk.rsmt_bear := false
+            live_sync_mk.rsmt_name := ""
+            live_sync_mk.rsmt_y1 := na
+            live_sync_mk.rsmt_y2 := na
+            live_sync_mk.rsmt_t1 := na
+            live_sync_mk.rsmt_t2 := na
+        array.set(htf_marks, live_sync_idx, live_sync_mk)
+
+// CORE LOGIC 3: CISD ENGINE
+// ==========================================
+
+bool bull_manip_owner_valid = is_bull_sweeping or active_bull_cisd_owner != 0
+bool bear_manip_owner_valid = is_bear_sweeping or active_bear_cisd_owner != 0
+
+bool allow_bull_cisd_calc = allow_bull and use_cisd and bull_manip_owner_valid and active_bull_manip_id != 0
+bool allow_bear_cisd_calc = allow_bear and use_cisd and bear_manip_owner_valid and active_bear_manip_id != 0
+
+bool up_c = close >= open
+bool dw_c = close <= open
+bool eq_c = close == open
+
+var float cur_htf_h = na
+var float cur_htf_l = na
+var float prev_htf_h = na
+var float prev_htf_l = na
+
+if is_new_15m
+    prev_htf_h := cur_htf_h
+    prev_htf_l := cur_htf_l
+    cur_htf_h := high
+    cur_htf_l := low
+else
+    cur_htf_h := math.max(nz(cur_htf_h, high), high)
+    cur_htf_l := math.min(nz(cur_htf_l, low), low)
+
+
+bool bull_owner_has_no_cisd = active_bull_manip_id != 0 and bull_cisd_done_owner != active_bull_manip_id
+
+if allow_bull_cisd_calc and is_bull_sweeping and (bull_owner_has_no_cisd or bull_new_low_made)
+    delete_cisd_for_manip(active_bull_manip_id) 
+    bull_cisd_pending := true
+    bull_reclaimed := false
+    bull_cisd_done_owner := active_bull_manip_id
+
+    if not na(active_bull_cisd_l)
+        line.delete(active_bull_cisd_l)
+        active_bull_cisd_l := na
+    if not na(active_bull_cisd_lbl)
+        label.delete(active_bull_cisd_lbl)
+        active_bull_cisd_lbl := na
+
+    bull_level_fixed := na
+    bull_index_fixed := na
+
+    if (dw_c or eq_c) and (up_c[1] or eq_c[1]) and not (eq_c and eq_c[1])
+        bull_level_fixed := open
+        bull_index_fixed := bar_index
+    else
+        for i = 2 to 10
+            if low[i] < low
+                break
+            if (up_c[i] or eq_c[i]) and dw_c[i - 1]
+                int bull_bar = i - 1
+                bull_level_fixed := open[bull_bar]
+                bull_index_fixed := bar_index - bull_bar
+                for j = bull_bar to 0
+                    if open[j] > bull_level_fixed and dw_c[j]
+                        bull_level_fixed := open[j]
+                        bull_index_fixed := bar_index - j
+                break
+
+    if na(bull_level_fixed)
+        bull_level_fixed := dw_c ? open : high
+        bull_index_fixed := bar_index
+
+    if bull_level_fixed < open
+        bull_level_fixed := dw_c ? open : high
+
+    active_bull_cisd_l := line.new(
+         bull_index_fixed, bull_level_fixed,
+         bar_index, bull_level_fixed,
+         width=cisd_line_width, color=col_pend, style=cisd_line_style)
+
+    active_bull_cisd_lbl := label.new(
+         bar_index + 0, bull_level_fixed,
+         "+CISD",
+         style=label.style_label_left,
+         size=chart_text_size,
+         textcolor=col_pend,
+         color=color.new(color.white, 100))
+
+    active_bull_cisd_owner := active_bull_manip_id
+
+bool bear_owner_has_no_cisd = active_bear_manip_id != 0 and bear_cisd_done_owner != active_bear_manip_id
+
+if allow_bear_cisd_calc and is_bear_sweeping and (bear_owner_has_no_cisd or bear_new_high_made)
+    delete_cisd_for_manip(active_bear_manip_id) 
+    bear_cisd_pending := true
+    bear_reclaimed := false
+    bear_cisd_done_owner := active_bear_manip_id
+
+    if not na(active_bear_cisd_l)
+        line.delete(active_bear_cisd_l)
+        active_bear_cisd_l := na
+    if not na(active_bear_cisd_lbl)
+        label.delete(active_bear_cisd_lbl)
+        active_bear_cisd_lbl := na
+
+    bear_level_fixed := na
+    bear_index_fixed := na
+
+    if (up_c or eq_c) and (dw_c[1] or eq_c[1]) and not (eq_c and eq_c[1])
+        bear_level_fixed := open
+        bear_index_fixed := bar_index
+    else
+        for i = 2 to 10
+            if high[i] > high
+                break
+            if (dw_c[i] or eq_c[i]) and up_c[i - 1]
+                int bear_bar = i - 1
+                bear_level_fixed := open[bear_bar]
+                bear_index_fixed := bar_index - bear_bar
+                for j = bear_bar to 0
+                    if open[j] < bear_level_fixed and up_c[j]
+                        bear_level_fixed := open[j]
+                        bear_index_fixed := bar_index - j
+                break
+
+    if na(bear_level_fixed)
+        bear_level_fixed := up_c ? open : low
+        bear_index_fixed := bar_index
+
+    if bear_level_fixed > open
+        bear_level_fixed := up_c ? open : low
+
+    active_bear_cisd_l := line.new(
+         bear_index_fixed, bear_level_fixed,
+         bar_index, bear_level_fixed,
+         width=cisd_line_width, color=col_pend, style=cisd_line_style)
+
+    active_bear_cisd_lbl := label.new(
+         bar_index + 0, bear_level_fixed,
+         "-CISD",
+         style=label.style_label_left,
+         size=chart_text_size,
+         textcolor=col_pend,
+         color=color.new(color.white, 100))
+
+    active_bear_cisd_owner := active_bear_manip_id
+
+bool bull_main_cisd_confirmed = false
+bool bear_main_cisd_confirmed = false
+if use_cisd and not is_new_15m
+    bool xbull = not na(active_bull_cisd_l) and
+         not na(bull_level_fixed) and
+         bull_cisd_pending and
+         bar_index > bull_index_fixed and
+         close > bull_level_fixed
+
+    if xbull
+        bull_main_cisd_confirmed := true
+        bull_reclaimed := true
+        bull_cisd_pending := false
+
+    bool xbear = not na(active_bear_cisd_l) and
+         not na(bear_level_fixed) and
+         bear_cisd_pending and
+         bar_index > bear_index_fixed and
+         close < bear_level_fixed
+
+    if xbear
+        bear_main_cisd_confirmed := true
+        bear_reclaimed := true
+        bear_cisd_pending := false
+
+if not na(active_bull_cisd_l)
+    line.set_x2(active_bull_cisd_l, bar_index)
+    if bull_cisd_pending
+        line.set_color(active_bull_cisd_l, col_pend)
+        label.set_xy(active_bull_cisd_lbl, bar_index + 0, bull_level_fixed)
+        label.set_text(active_bull_cisd_lbl, "+CISD")
+        label.set_textcolor(active_bull_cisd_lbl, col_pend)
+    else
+        line.set_color(active_bull_cisd_l, col_bull_conf)
+        label.set_xy(active_bull_cisd_lbl, bar_index + 0, bull_level_fixed)
+        label.set_text(active_bull_cisd_lbl, "+CISD")
+        label.set_textcolor(active_bull_cisd_lbl, col_bull_conf)
+
+        add_cisd_history(plus_cisd_history, active_bull_cisd_l, active_bull_cisd_lbl, active_bull_cisd_owner, hist_plus_cisd)
+        active_bull_cisd_l := na
+        active_bull_cisd_lbl := na
+        active_bull_cisd_owner := 0
+        bull_cisd_pending := false
+
+if not na(active_bear_cisd_l)
+    line.set_x2(active_bear_cisd_l, bar_index)
+    if bear_cisd_pending
+        line.set_color(active_bear_cisd_l, col_pend)
+        label.set_xy(active_bear_cisd_lbl, bar_index + 0, bear_level_fixed)
+        label.set_text(active_bear_cisd_lbl, "-CISD")
+        label.set_textcolor(active_bear_cisd_lbl, col_pend)
+    else
+        line.set_color(active_bear_cisd_l, col_bear_conf)
+        label.set_xy(active_bear_cisd_lbl, bar_index + 0, bear_level_fixed)
+        label.set_text(active_bear_cisd_lbl, "-CISD")
+        label.set_textcolor(active_bear_cisd_lbl, col_bear_conf)
+
+        add_cisd_history(minus_cisd_history, active_bear_cisd_l, active_bear_cisd_lbl, active_bear_cisd_owner, hist_minus_cisd)
+        active_bear_cisd_l := na
+        active_bear_cisd_lbl := na
+        active_bear_cisd_owner := 0
+        bear_cisd_pending := false
+
+trim_cisd_history(plus_cisd_history, hist_plus_cisd)
+trim_cisd_history(minus_cisd_history, hist_minus_cisd)
+
+if use_cisd
+    if array.size(plus_cisd_history) > 0
+        for i = 0 to array.size(plus_cisd_history) - 1
+            CISDHistory item = array.get(plus_cisd_history, i)
+            if bar_index <= item.conf_bar + extend_cisd_bars
+                line.set_x2(item.l, bar_index)
+                label.set_x(item.lbl, bar_index + 0)
+
+    if array.size(minus_cisd_history) > 0
+        for i = 0 to array.size(minus_cisd_history) - 1
+            CISDHistory item = array.get(minus_cisd_history, i)
+            if bar_index <= item.conf_bar + extend_cisd_bars
+                line.set_x2(item.l, bar_index)
+                label.set_x(item.lbl, bar_index + 0)
+
+
+// ==========================================
+// ==========================================
+// INTRACANDLE CISD (IC-CISD)
+// Correct ownership model:
+// - line X1 = first opposing candle of the delivery sequence that owns the protected extreme
+// - line Y  = opening price of that delivery-origin candle
+// - dot     = exact protected-high/protected-low candle
+// - confirmation must occur after the protected candle by a confirmed body close
+// ==========================================
+type ICCISDDrawing
+    line lvl
+    label sig
+    bool bull
+    float protPrice
+    int htfTime
+
+var ICCISDDrawing[] icHist = array.new<ICCISDDrawing>()
+
+// Running opposing delivery sequences inside the current HTF candle.
+var bool icBearDelivery = false
+var float icBearDeliveryOpen = na
+var int icBearDeliveryX = na
+var bool icBullDelivery = false
+var float icBullDeliveryOpen = na
+var int icBullDeliveryX = na
+
+// Candidate bound to the latest protected extreme.
+var bool icBullCandidate = false
+var float icBullLvl = na
+var int icBullLineX = na
+var float icBullPL = na
+var int icBullPLX = na
+var bool icBullDone = false
+
+var bool icBearCandidate = false
+var float icBearLvl = na
+var int icBearLineX = na
+var float icBearPH = na
+var int icBearPHX = na
+var bool icBearDone = false
+
+var ICCISDDrawing icActiveBull = na
+var ICCISDDrawing icActiveBear = na
+
+icDelete(ICCISDDrawing d) =>
+    if not na(d)
+        if not na(d.lvl)
+            line.delete(d.lvl)
+        if not na(d.sig)
+            label.delete(d.sig)
+
+icTrim() =>
+    while array.size(icHist) > ic_cisd_history
+        icDelete(array.shift(icHist))
+
+if is_new_15m
+    icActiveBull := na
+    icActiveBear := na
+    icBearDelivery := false
+    icBearDeliveryOpen := na
+    icBearDeliveryX := na
+    icBullDelivery := false
+    icBullDeliveryOpen := na
+    icBullDeliveryX := na
+    icBullCandidate := false
+    icBullLvl := na
+    icBullLineX := na
+    icBullPL := na
+    icBullPLX := na
+    icBullDone := false
+    icBearCandidate := false
+    icBearLvl := na
+    icBearLineX := na
+    icBearPH := na
+    icBearPHX := na
+    icBearDone := false
+
+if not use_ic_cisd
+    while array.size(icHist) > 0
+        icDelete(array.pop(icHist))
+    icActiveBull := na
+    icActiveBear := na
+
+icLineStyle = ic_line_style_input == "Solid" ? line.style_solid : ic_line_style_input == "Dotted" ? line.style_dotted : line.style_dashed
+
+if use_ic_cisd and not na(c15_open) and barstate.isconfirmed
+    bool icDown = close < open
+    bool icUp = close > open
+
+    // Track the exact start of each contiguous bearish delivery.
+    if icDown
+        if not icBearDelivery
+            icBearDelivery := true
+            icBearDeliveryOpen := open
+            icBearDeliveryX := bar_index
+    else if icUp
+        icBearDelivery := false
+
+    // Track the exact start of each contiguous bullish delivery.
+    if icUp
+        if not icBullDelivery
+            icBullDelivery := true
+            icBullDeliveryOpen := open
+            icBullDeliveryX := bar_index
+    else if icDown
+        icBullDelivery := false
+
+    // BULLISH IC-CISD candidate.
+    // A new protected low is accepted only while a valid bearish delivery exists.
+    // Every lower protected low rebinds BOTH the line level and X1 to its owner delivery.
+    if allow_bull and not icBullDone and low < c15_open and not na(icBearDeliveryOpen) and not na(icBearDeliveryX)
+        bool newProtectedLow = na(icBullPL) or low < icBullPL
+        if newProtectedLow
+            icBullCandidate := true
+            icBullPL := low
+            icBullPLX := bar_index
+            icBullLvl := icBearDeliveryOpen
+            icBullLineX := icBearDeliveryX
+
+    // Confirm only after the protected candle. This prevents the protected candle
+    // itself or an unrelated older delivery from confirming the assembly.
+    bool bullIC = allow_bull and not icBullDone and icBullCandidate and not na(icBullLvl) and not na(icBullLineX) and not na(icBullPLX) and bar_index > icBullPLX and close > icBullLvl
+    if bullIC
+        line ln = line.new(icBullLineX, icBullLvl, bar_index + ic_extend_bars, icBullLvl, xloc=xloc.bar_index, color=ic_bull_color, width=ic_line_width, style=icLineStyle)
+        label lb = ic_show_dot ? label.new(icBullPLX, icBullPL, "●", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_up, color=color.new(ic_bull_color, 100), textcolor=ic_bull_color, size=ic_dot_size, textalign=text.align_center) : na
+        ICCISDDrawing d = ICCISDDrawing.new(ln, lb, true, icBullPL, c15_start_time)
+        array.push(icHist, d)
+        icActiveBull := d
+        icBullDone := true
+        icTrim()
+
+    // BEARISH IC-CISD candidate. Exact inverse of bullish ownership.
+    if allow_bear and not icBearDone and high > c15_open and not na(icBullDeliveryOpen) and not na(icBullDeliveryX)
+        bool newProtectedHigh = na(icBearPH) or high > icBearPH
+        if newProtectedHigh
+            icBearCandidate := true
+            icBearPH := high
+            icBearPHX := bar_index
+            icBearLvl := icBullDeliveryOpen
+            icBearLineX := icBullDeliveryX
+
+    bool bearIC = allow_bear and not icBearDone and icBearCandidate and not na(icBearLvl) and not na(icBearLineX) and not na(icBearPHX) and bar_index > icBearPHX and close < icBearLvl
+    if bearIC
+        line ln = line.new(icBearLineX, icBearLvl, bar_index + ic_extend_bars, icBearLvl, xloc=xloc.bar_index, color=ic_bear_color, width=ic_line_width, style=icLineStyle)
+        label lb = ic_show_dot ? label.new(icBearPHX, icBearPH, "●", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_none, textcolor=ic_bear_color, size=ic_dot_size, textalign=text.align_center) : na
+        ICCISDDrawing d = ICCISDDrawing.new(ln, lb, false, icBearPH, c15_start_time)
+        array.push(icHist, d)
+        icActiveBear := d
+        icBearDone := true
+        icTrim()
+
+    // Confirmed body-close invalidation within the same HTF candle.
+    if not na(icActiveBull) and close < icActiveBull.protPrice
+        icDelete(icActiveBull)
+        if array.size(icHist) > 0
+            for n = array.size(icHist) - 1 to 0
+                ICCISDDrawing d = array.get(icHist, n)
+                if d.htfTime == icActiveBull.htfTime and d.bull
+                    array.remove(icHist, n)
+                    break
+        icActiveBull := na
+
+    if not na(icActiveBear) and close > icActiveBear.protPrice
+        icDelete(icActiveBear)
+        if array.size(icHist) > 0
+            for n = array.size(icHist) - 1 to 0
+                ICCISDDrawing d = array.get(icHist, n)
+                if d.htfTime == icActiveBear.htfTime and not d.bull
+                    array.remove(icHist, n)
+                    break
+        icActiveBear := na
+
+icTrim()
+// ==========================================
+// DRAWING HTF UI (MOVED TO END FOR INSTANT UPDATES)
+// ==========================================
+if barstate.islast
+    for b in htf_drawn_boxes
+        box.delete(b)
+    array.clear(htf_drawn_boxes)
+    for l in htf_drawn_wicks
+        line.delete(l)
+    array.clear(htf_drawn_wicks)
+    for lb in htf_drawn_labels
+        label.delete(lb)
+    array.clear(htf_drawn_labels)
+    for hlb in htf_hover_labels
+        label.delete(hlb)
+    array.clear(htf_hover_labels)
+    
+    for vl in drawn_vseps
+        line.delete(vl)
+    array.clear(drawn_vseps)
+
+    if use_vsep and array.size(vsep_indices) > 0
+        for i = 0 to array.size(vsep_indices) - 1
+            int idx = array.get(vsep_indices, i)
+            line vl = line.new(x1=idx, y1=close, x2=idx, y2=close + syminfo.mintick, extend=extend.both, color=vsep_col, width=vsep_width, style=get_line_style(vsep_style))
+            array.push(drawn_vseps, vl)
+
+    if use_htf_candles
+        HTFCandle[] all_candles = array.new<HTFCandle>()
+        if array.size(htf_hist) > 0
+            for i = 0 to array.size(htf_hist) - 1
+                array.push(all_candles, array.get(htf_hist, i))
+        if not na(cur_htf)
+            array.push(all_candles, cur_htf)
+            
+        while array.size(all_candles) > htf_count
+            array.shift(all_candles)
+            
+        int start_idx = bar_index + htf_offset
+        for i = 0 to array.size(all_candles) - 1
+            HTFCandle c = array.get(all_candles, i)
+            
+            int center_x = start_idx + (i * htf_spacing)
+            int left_x = center_x - math.floor(htf_width / 2)
+            int right_x = center_x + math.floor(htf_width / 2)
+            
+            bool is_bull_htf = c.c >= c.o
+            color body_col = is_bull_htf ? col_htf_bull : col_htf_bear
+            color border_col = is_bull_htf ? col_htf_bull_border : col_htf_bear_border
+            
+            float body_top = math.max(c.o, c.c)
+            float body_bot = math.min(c.o, c.c)
+            if body_top == body_bot
+                body_top += syminfo.mintick * 0.5
+                body_bot -= syminfo.mintick * 0.5
+            
+            box b = box.new(left_x, body_top, right_x, body_bot, border_color=border_col, border_width=htf_border_width, bgcolor=body_col)
+            array.push(htf_drawn_boxes, b)
+
+            // Floating HTF candle equilibrium: draw on EVERY displayed candle.
+            // IMPORTANT: TradingView renders boxes above lines. Therefore a normal line can be
+            // hidden by the HTF candle body. A zero-height box is created AFTER the candle body,
+            // keeping the equilibrium marker visible on bullish, bearish and doji candles.
+            // Current forming HTF candle par EQ hide
+            bool is_current_htf_candle = i == array.size(all_candles) - 1
+
+            if show_htf_eq_line and not is_current_htf_candle
+                float htf_eq_price = math.avg(c.h, c.l)
+                int htf_eq_x1 = left_x + 1
+                int htf_eq_x2 = right_x + 3
+                box htf_eq_b = box.new(left=htf_eq_x1, top=htf_eq_price, right=htf_eq_x2, bottom=htf_eq_price, xloc=xloc.bar_index, border_color=col_htf_eq_line, border_width=htf_eq_width, border_style=get_line_style(htf_eq_style_in), bgcolor=na)
+                array.push(htf_drawn_boxes, htf_eq_b)
+            
+            // Connect the selected number of latest HTF opening prices from their
+            // first LTF candles to the matching floating HTF candle bodies.
+            if show_htf_open_connector and i >= math.max(0, array.size(all_candles) - htf_open_connector_count) and not na(c.start_bar)
+                line open_connector = line.new(x1=c.start_bar, y1=c.o, x2=center_x, y2=c.o, xloc=xloc.bar_index, color=col_htf_open_connector, width=htf_open_connector_width, style=get_line_style(htf_open_connector_style))
+                array.push(htf_drawn_wicks, open_connector)
+            float upper_start = is_bull_htf ? c.c : c.o
+            float lower_start = is_bull_htf ? c.o : c.c
+            
+            if c.h > upper_start
+                line upper_wick = line.new(center_x, c.h, center_x, upper_start, color=col_htf_wick)
+                array.push(htf_drawn_wicks, upper_wick)
+            
+            if lower_start > c.l
+                line lower_wick = line.new(center_x, lower_start, center_x, c.l, color=col_htf_wick)
+                array.push(htf_drawn_wicks, lower_wick)
+            
+            if i > 0
+                for j = i - 1 to 0
+                    HTFCandle prev_c = array.get(all_candles, j)
+                    
+                    bool h_swept = false
+                    if i - j > 1
+                        for k = j + 1 to i - 1
+                            if array.get(all_candles, k).h > prev_c.h
+                                h_swept := true
+                                break
+                    if not h_swept and c.h > prev_c.h
+                        int prev_cx = start_idx + (j * htf_spacing)
+                        line sweep_h_line = line.new(prev_cx, prev_c.h, center_x, prev_c.h, color=col_htf_sweep, width=1, style=line.style_solid)
+                        array.push(htf_drawn_wicks, sweep_h_line)
+                        
+                    bool l_swept = false
+                    if i - j > 1
+                        for k = j + 1 to i - 1
+                            if array.get(all_candles, k).l < prev_c.l
+                                l_swept := true
+                                break
+                    if not l_swept and c.l < prev_c.l
+                        int prev_cx = start_idx + (j * htf_spacing)
+                        line sweep_l_line = line.new(prev_cx, prev_c.l, center_x, prev_c.l, color=col_htf_sweep, width=1, style=line.style_solid)
+                        array.push(htf_drawn_wicks, sweep_l_line)
+            
+            int htf_sec_val = timeframe.in_seconds(active_htf_tf)
+            string time_fmt = htf_sec_val >= 2419200 ? "MMM" : htf_sec_val >= 604800 ? "dd MMM" : htf_sec_val >= 86400 ? "EEE" : "hh:mm a"
+
+            string t_str = str.format_time(c.t, time_fmt, syminfo.timezone)
+            if show_htf_interval
+                label lbl_t = label.new(center_x, c.l, text=t_str, style=label.style_label_up, color=color.new(color.white, 100), textcolor=col_htf_txt, size=size.tiny)
+                array.push(htf_drawn_labels, lbl_t)
+            
+            // Render HTF Marks
+            string mark_str = ""
+            int candle_ms = timeframe.in_seconds(active_htf_tf) * 1000
+            int mark_idx = get_htf_mark_index_for_candle(c.t, candle_ms)
+            if mark_idx >= 0
+                HTFMark mk = array.get(htf_marks, mark_idx)
+                // Exclusive model role: C2 takes precedence if stale historical
+                // state ever contains both flags during a live recalculation.
+                // Floating HTF candles show only the generic confirmation text.
+                // C1/C2 role and xC2 invalidation text remain exclusive to the LTF chart.
+                bool htf_has_psp = mk.c1_psp or (mk.c2 and mk.psp) or mk.xc2_psp
+                // Use exactly the same PSP state as the hover tooltip.
+                // Stale role flags must never hide a valid PSP confirmation.
+                if htf_has_psp
+                    mark_str += "PSP"
+                if mk.c3
+                    mark_str += (mark_str == "" ? "" : "\n") + ""
+                if mk.c4
+                    mark_str += (mark_str == "" ? "" : "\n") + ""
+
+                // Draw HTF SMT Lines Floating on HTF Panel
+                if smt_history
+                    if mk.rsmt 
+                        int cx1 = na
+                        int cx2 = na
+                        for j = 0 to array.size(all_candles) - 1
+                            if array.get(all_candles, j).t == mk.rsmt_t1
+                                cx1 := start_idx + (j * htf_spacing)
+                            if array.get(all_candles, j).t == mk.rsmt_t2
+                                cx2 := start_idx + (j * htf_spacing)
+                        if not na(cx1) and not na(cx2)
+                            color smt_col = mk.rsmt_bear ? col_smt_bear : col_smt_bull
+                            line smt_l = line.new(cx1, mk.rsmt_y1, cx2, mk.rsmt_y2, color=smt_col, width=smt_line_width, style=get_line_style(smt_line_style))
+                            array.push(htf_drawn_wicks, smt_l)
+                            if show_htf_smt_text
+                                label smt_lbl = label.new(get_smt_lbl_x(cx1, cx2, smt_text_align), math.avg(mk.rsmt_y1, mk.rsmt_y2), text=mk.rsmt_name, style=label.style_none, textcolor=smt_text_color, size=get_text_size(smt_text_size), textalign=text.align_center)
+                                array.push(htf_drawn_labels, smt_lbl)
+                            
+                    if mk.ssmt 
+                        int cx1 = na
+                        int cx2 = na
+                        for j = 0 to array.size(all_candles) - 1
+                            if array.get(all_candles, j).t == mk.ssmt_t1
+                                cx1 := start_idx + (j * htf_spacing)
+                            if array.get(all_candles, j).t == mk.ssmt_t2
+                                cx2 := start_idx + (j * htf_spacing)
+                        if not na(cx1) and not na(cx2)
+                            color smt_col = mk.ssmt_bear ? col_smt_bear : col_smt_bull
+                            line smt_l = line.new(cx1, mk.ssmt_y1, cx2, mk.ssmt_y2, color=smt_col, width=smt_line_width, style=get_line_style(smt_line_style))
+                            array.push(htf_drawn_wicks, smt_l)
+                            if show_htf_smt_text
+                                label smt_lbl = label.new(get_smt_lbl_x(cx1, cx2, smt_text_align), math.avg(mk.ssmt_y1, mk.ssmt_y2), text=mk.ssmt_name, style=label.style_none, textcolor=smt_text_color, size=get_text_size(smt_text_size), textalign=text.align_center)
+                                array.push(htf_drawn_labels, smt_lbl)
+
+            // Hover tooltip contains PSP and SMT information only.
+            if show_htf_hover_tooltip
+                string hover_psp = "None"
+                string hover_smt = "None"
+                if mark_idx >= 0
+                    HTFMark hover_mk = array.get(htf_marks, mark_idx)
+                    bool hover_has_psp = hover_mk.c1_psp or (hover_mk.c2 and hover_mk.psp) or hover_mk.xc2_psp
+                    hover_psp := hover_has_psp and hover_mk.psp_name != "" ? hover_mk.psp_name : hover_has_psp ? "Confirmed" : "None"
+                    hover_smt := hover_mk.rsmt and hover_mk.ssmt ? hover_mk.rsmt_name + " / " + hover_mk.ssmt_name : hover_mk.rsmt ? hover_mk.rsmt_name : hover_mk.ssmt ? hover_mk.ssmt_name : "None"
+                string hover_tip = "PSP: " + hover_psp + "\n" + "SMT: " + hover_smt
+                // Pine tooltips belong to labels, not to candle boxes or wick lines.
+                // Multiple invisible large labels cover the full high-to-low candle span,
+                // so hovering the body, upper wick, lower wick, high or low shows the same tooltip.
+                float hover_body_mid = math.avg(body_top, body_bot)
+                float hover_upper_mid = math.avg(c.h, body_top)
+                float hover_lower_mid = math.avg(body_bot, c.l)
+                float hover_full_q1 = c.l + (c.h - c.l) * 0.25
+                float hover_full_q3 = c.l + (c.h - c.l) * 0.75
+                float[] hover_points = array.from(c.h, hover_upper_mid, hover_full_q3, body_top, hover_body_mid, body_bot, hover_full_q1, hover_lower_mid, c.l)
+                for hover_i = 0 to array.size(hover_points) - 1
+                    float hover_y = array.get(hover_points, hover_i)
+                    label hover_lbl = label.new(center_x, hover_y, text="●", style=label.style_none, color=color.new(color.white, 100), textcolor=color.new(color.white, 100), size=size.large, textalign=text.align_center, tooltip=hover_tip)
+                    array.push(htf_hover_labels, hover_lbl)
+
+            // Keep C2/C3/C4/PSP marks attached to their own HTF candle.
+            if mark_str != ""
+                float mark_pad = math.max((c.h - c.l) * 0.03, syminfo.mintick * 5)
+                HTFMark position_mk = array.get(htf_marks, mark_idx)
+                float mark_y = position_mk.psp_above ? c.h + mark_pad : c.l - mark_pad
+                label lbl_mark = label.new(center_x, mark_y, text=mark_str, style=label.style_none, color=color.new(color.white, 100), textcolor=col_htf_mark_txt, size=chart_text_size, textalign=text.align_center)
+                array.push(htf_drawn_labels, lbl_mark)
+
+        // LIVE HTF TIMER: centred on the complete floating candle group.
+        int candle_total = array.size(all_candles)
+        if candle_total > 0
+            HTFCandle live_candle = array.get(all_candles, candle_total - 1)
+            int first_group_x = start_idx
+            int last_group_x = start_idx + ((candle_total - 1) * htf_spacing)
+            int group_center_x = int(math.round(math.avg(first_group_x, last_group_x)))
+
+            float group_high = array.get(all_candles, 0).h
+            float group_low = array.get(all_candles, 0).l
+            if candle_total > 1
+                for gi = 1 to candle_total - 1
+                    HTFCandle gc = array.get(all_candles, gi)
+                    group_high := math.max(group_high, gc.h)
+                    group_low := math.min(group_low, gc.l)
+
+            int timer_htf_sec = timeframe.in_seconds(active_htf_tf)
+            int timer_end_time = live_candle.t + (timer_htf_sec * 1000)
+            int timer_remaining = math.max(0, timer_end_time - timenow)
+            int timer_hrs = int(math.floor(timer_remaining / 3600000))
+            int timer_mins = int(math.floor((timer_remaining % 3600000) / 60000))
+            int timer_secs = int(math.floor((timer_remaining % 60000) / 1000))
+            string timer_value = str.tostring(timer_hrs, "00") + ":" + str.tostring(timer_mins, "00") + ":" + str.tostring(timer_secs, "00")
+            string timer_text = get_tf_display_name(active_htf_tf) + "\n" + timer_value + ""
+            timer_label_size = get_timer_size(htf_timer_size)
+
+            if htf_timer_position == "Top" or htf_timer_position == "Both"
+                label timer_top = label.new(group_center_x, group_high, text=timer_text, style=label.style_label_down, color=color.new(color.white, 100), textcolor=col_htf_txt, size=timer_label_size, textalign=text.align_center)
+                array.push(htf_drawn_labels, timer_top)
+
+            if htf_timer_position == "Bottom" or htf_timer_position == "Both"
+                label timer_bottom = label.new(group_center_x, group_low, text=timer_text, style=label.style_label_up, color=color.new(color.white, 100), textcolor=col_htf_txt, size=timer_label_size, textalign=text.align_center)
+                array.push(htf_drawn_labels, timer_bottom)
