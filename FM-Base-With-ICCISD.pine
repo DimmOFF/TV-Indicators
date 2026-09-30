@@ -62,12 +62,12 @@ earlyCisdStyle = input.string('Dashed', '', options = ['Solid', 'Dashed', 'Dotte
 earlyCisdWidth = input.int(1, '', minval = 1, group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd)
 
 showBullCisd  = input.bool(true, 'Bullish CISD', group = grpVisuals, inline = 'bullcisd')
-cisdBullColor = input.color(color.new(color.red, 0), '', group = grpVisuals, inline = 'bullcisd')
+cisdBullColor = input.color(color.new(color.blue, 0), '', group = grpVisuals, inline = 'bullcisd')
 cisdBullStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'bullcisd', active = showBullCisd)
 cisdBullWidth = input.int(1, '', minval = 1, group = grpVisuals, inline = 'bullcisd', active = showBullCisd)
 
 showBearCisd  = input.bool(true, 'Bearish CISD', group = grpVisuals, inline = 'bearcisd')
-cisdBearColor = input.color(color.new(color.blue, 0), '', group = grpVisuals, inline = 'bearcisd')
+cisdBearColor = input.color(color.new(color.red, 0), '', group = grpVisuals, inline = 'bearcisd')
 cisdBearStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'bearcisd', active = showBearCisd)
 cisdBearWidth = input.int(1, '', minval = 1, group = grpVisuals, inline = 'bearcisd', active = showBearCisd)
 
