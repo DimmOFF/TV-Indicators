@@ -1,5 +1,5 @@
 //@version=6
-indicator("FM° MTF HTF", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+indicator("FM° MTF HTF Options", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
 
 //#region [INPUTS]
 
