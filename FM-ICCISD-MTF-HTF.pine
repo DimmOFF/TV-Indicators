@@ -210,6 +210,7 @@ tbl_show_smt     = input.bool(true, 'SMT?',     inline = 'tbl_rows', group = grp
 candleSpacing = 3
 noColor       = color.new(#000000, 100)
 icBackfillMaxBars = 300
+icGreyBars = 10   // bars a taken (grey) protected-swing dot stays visible before it is deleted
 
 type HtfCandle
     float o
@@ -251,9 +252,11 @@ type ICCisd
     int   endIndex
     float extremePrice
     int   extremeIndex
-    bool  taken   = false
-    line  ln      = na
-    label dotLbl  = na
+    bool  taken    = false
+    line  ln       = na
+    label dotLbl   = na
+    bool  isBull   = false
+    int   takenBar = na
 
 type C2Setup
     bool  isBull
@@ -311,6 +314,8 @@ var PeriodState              state                = PeriodState.new()
 var C2Setup                  buySetup             = na
 var C2Setup                  sellSetup            = na
 var array<SetupRecord>       setupRecords         = array.new<SetupRecord>()
+// Persistent protected-swing dots: independent of any setup's lifespan
+var array<ICCisd>            icDots               = array.new<ICCisd>()
 var array<EarlyCisdRecord>   bullEarlyCisdRecords = array.new<EarlyCisdRecord>()
 var array<EarlyCisdRecord>   bearEarlyCisdRecords = array.new<EarlyCisdRecord>()
 var int                      htfOpenBar           = na
@@ -852,10 +857,36 @@ registerIcCisd(C2Setup s, float swPx, int swIdx, int endIdx) =>
     color clr     = s.isBull ? cisdBullColor : cisdBearColor
     line   ln     = na
     label  dotLbl = label.new(swIdx, swPx, '●', xloc = xloc.bar_index, style = s.isBull ? label.style_label_up : label.style_label_down, color = na, textcolor = clr, size = textSize(icCisdDotSize), text_font_family = font.family_default)
-    ic = ICCisd.new(s.icLevel, s.icStartIndex, endIdx, swPx, swIdx, false, ln, dotLbl)
+    ic = ICCisd.new(s.icLevel, s.icStartIndex, endIdx, swPx, swIdx, false, ln, dotLbl, s.isBull)
     if na(s.icList)
         s.icList := array.new<ICCisd>()
     s.icList.push(ic)
+    // global list: survives setup eviction
+    icDots.push(ic)
+
+// Greys a dot when price wicks beyond its extreme, then deletes it icGreyBars bars later.
+icMarkTakenAll() =>
+    if icDots.size() > 0
+        for i = icDots.size() - 1 to 0
+            ic = icDots.get(i)
+            if not ic.taken and not na(ic.extremePrice)
+                bool sweep = ic.isBull ? low < ic.extremePrice : high > ic.extremePrice
+                if sweep
+                    ic.taken := true
+                    if not na(ic.dotLbl)
+                        label.set_textcolor(ic.dotLbl, color.gray)
+                    if not na(ic.ln)
+                        line.set_color(ic.ln, color.gray)
+            if ic.taken
+                // the per-setup icMarkTaken can also flag dots, so stamp the bar here
+                if na(ic.takenBar)
+                    ic.takenBar := bar_index
+                if bar_index - ic.takenBar >= icGreyBars
+                    if not na(ic.dotLbl)
+                        label.delete(ic.dotLbl)
+                    if not na(ic.ln)
+                        line.delete(ic.ln)
+                    icDots.remove(i)
 
 // One step of the IC state machine for bar m (m == bar_index live, m < bar_index when replaying).
 icStep(C2Setup s, int m, bool live) =>
@@ -958,12 +989,7 @@ deleteSetupVisuals(C2Setup s) =>
             if not na(s.stdDevData.labels)
                 for lb in s.stdDevData.labels
                     label.delete(lb)
-        if not na(s.icList)
-            for ic in s.icList
-                if not na(ic.ln)
-                    line.delete(ic.ln)
-                if not na(ic.dotLbl)
-                    label.delete(ic.dotLbl)
+        
 
 registerRecord(C2Setup s) =>
     setupRecords.push(SetupRecord.new(s, bar_index))
@@ -1342,10 +1368,11 @@ sellSetup := sellSetup.checkC4Invalid()
 buySetup  := buySetup.checkCisdConfirm()
 sellSetup := sellSetup.checkCisdConfirm()
 
+// check every persistent dot against the current bar BEFORE new dots can form on it
+icMarkTakenAll()
+
 buySetup  := buySetup.updateIc()
 sellSetup := sellSetup.updateIc()
-for rec in setupRecords
-    icMarkTaken(rec.setup, bar_index)
 
 if not na(buySetup) and buySetup.justConfirmed
     cisdBullFiredThisBar := true
