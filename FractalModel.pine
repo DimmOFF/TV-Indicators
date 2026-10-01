@@ -155,7 +155,6 @@ sess2Name  = input.string('LONDON', '', group = grpSess, inline = 's2')
 sess2Time  = input.session('0200-0700', '', group = grpSess, inline = 's2')
 sess2Color = input.color(color.teal, '', group = grpSess, inline = 's2')
 // ---- END NEW ----
-// ---- END NEW ----
 
 grpDash = 'Table Info Settings'
 tbl_show         = input.bool(true,  'Show?',        inline = 'tbl_show', group = grpDash)
@@ -178,6 +177,7 @@ tbl_show_date    = input.bool(true,  'Date?',    inline = 'tbl_rows', group = gr
 candleSpacing = 3
 noColor       = color.new(#000000, 100)
 icBackfillMaxBars = 300
+icGreyBars = 10   // bars a taken (grey) protected-swing dot stays visible before it is deleted
 
 type HtfCandle
     float o
@@ -221,9 +221,11 @@ type ICCisd
     int   endIndex
     float extremePrice
     int   extremeIndex
-    bool  taken   = false
-    line  ln      = na
-    label dotLbl  = na
+    bool  taken    = false
+    line  ln       = na
+    label dotLbl   = na
+    bool  isBull   = false
+    int   takenBar = na
 
 type C2Setup
     bool  isBull
@@ -256,7 +258,7 @@ type C2Setup
     int   icStartIndex    = na
     float icExtreme       = na
     int   icExtremeIndex  = na
-	float c3Extreme = na
+    float c3Extreme = na
     bool  icStopped = false
 
 type SetupRecord
@@ -288,6 +290,8 @@ var PeriodState              state                = PeriodState.new()
 var C2Setup                  buySetup             = na
 var C2Setup                  sellSetup            = na
 var array<SetupRecord>       setupRecords         = array.new<SetupRecord>()
+// Persistent protected-swing dots: independent of any setup's lifespan
+var array<ICCisd>            icDots               = array.new<ICCisd>()
 var array<EarlyCisdRecord>   bullEarlyCisdRecords = array.new<EarlyCisdRecord>()
 var array<EarlyCisdRecord>   bearEarlyCisdRecords = array.new<EarlyCisdRecord>()
 var int                      htfOpenBar           = na
@@ -723,14 +727,38 @@ icMarkTaken(C2Setup s, int m) =>
 
 registerIcCisd(C2Setup s, float swPx, int swIdx, int endIdx) =>
     color clr     = s.isBull ? cisdBullColor : cisdBearColor
-    string lnSty  = s.isBull ? cisdBullStyle : cisdBearStyle
-    int    lnWid  = s.isBull ? cisdBullWidth : cisdBearWidth
     line   ln     = na
     label  dotLbl = label.new(swIdx, swPx, '●', xloc = xloc.bar_index, style = s.isBull ? label.style_label_up : label.style_label_down, color = na, textcolor = clr, size = textSize(icCisdDotSize), text_font_family = font.family_default)
-    ic = ICCisd.new(s.icLevel, s.icStartIndex, endIdx, swPx, swIdx, false, ln, dotLbl)
+    ic = ICCisd.new(s.icLevel, s.icStartIndex, endIdx, swPx, swIdx, false, ln, dotLbl, s.isBull)
     if na(s.icList)
         s.icList := array.new<ICCisd>()
     s.icList.push(ic)
+    // global list: survives setup eviction
+    icDots.push(ic)
+
+// Greys a dot when price wicks beyond its extreme, then deletes it icGreyBars bars later.
+icMarkTakenAll() =>
+    if icDots.size() > 0
+        for i = icDots.size() - 1 to 0
+            ic = icDots.get(i)
+            if not ic.taken and not na(ic.extremePrice)
+                bool sweep = ic.isBull ? low < ic.extremePrice : high > ic.extremePrice
+                if sweep
+                    ic.taken := true
+                    if not na(ic.dotLbl)
+                        label.set_textcolor(ic.dotLbl, color.gray)
+                    if not na(ic.ln)
+                        line.set_color(ic.ln, color.gray)
+            if ic.taken
+                // the per-setup icMarkTaken can also flag dots, so stamp the bar here
+                if na(ic.takenBar)
+                    ic.takenBar := bar_index
+                if bar_index - ic.takenBar >= icGreyBars
+                    if not na(ic.dotLbl)
+                        label.delete(ic.dotLbl)
+                    if not na(ic.ln)
+                        line.delete(ic.ln)
+                    icDots.remove(i)
 
 // One step of the IC state machine for bar m (m == bar_index live, m < bar_index when replaying).
 icStep(C2Setup s, int m, bool live) =>
@@ -807,6 +835,8 @@ method updateIc(C2Setup s) =>
     s
 
 
+// NOTE: IC dots are intentionally NOT deleted here. They live in the global icDots list and are
+// removed only after being taken (grey) for icGreyBars bars.
 deleteSetupVisuals(C2Setup s) =>
     if not na(s)
         if not na(s.c2Lbl)
@@ -834,12 +864,6 @@ deleteSetupVisuals(C2Setup s) =>
             if not na(s.stdDevData.labels)
                 for lb in s.stdDevData.labels
                     label.delete(lb)
-        if not na(s.icList)
-            for ic in s.icList
-                if not na(ic.ln)
-                    line.delete(ic.ln)
-                if not na(ic.dotLbl)
-                    label.delete(ic.dotLbl)
 
 registerRecord(C2Setup s) =>
     setupRecords.push(SetupRecord.new(s, bar_index))
@@ -905,7 +929,7 @@ newSetup(bool isBull, float extreme, label c2Lbl, float cisdLevel, int cisdIndex
     s
 
 method advanceToC4(C2Setup s) =>
-	if htfCandles.size() > 1
+    if htfCandles.size() > 1
         c3 = htfCandles.get(1)
         s.c3Extreme := s.isBull ? c3.l : c3.h
     if not na(s.c3Box)
@@ -1238,10 +1262,11 @@ sellSetup := sellSetup.checkC4Invalid()
 buySetup  := buySetup.checkCisdConfirm()
 sellSetup := sellSetup.checkCisdConfirm()
 
+// check every persistent dot against the current bar BEFORE new dots can form on it
+icMarkTakenAll()
+
 buySetup  := buySetup.updateIc()
 sellSetup := sellSetup.updateIc()
-for rec in setupRecords
-    icMarkTaken(rec.setup, bar_index)
 
 if showAlerts
     if c2BuyTrigger and allowBuy and not showSweepC2Alerts
