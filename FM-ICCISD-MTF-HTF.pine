@@ -919,11 +919,12 @@ icHardStop(C2Setup s) =>
 method updateIc(C2Setup s) =>
     if not na(s)
         icCheckC4Wick(s)
+        // always keep existing dots up to date, even if detection has stopped
+        icMarkTaken(s, bar_index)
         if icHardStop(s) or not showIcCisd or not s.cisdConfirmed or na(s.cisdEndIndex)
             s.icActive := false
             icClearPending(s)
         else
-            icMarkTaken(s, bar_index)
             // Only ever arm / move / break on a closed candle, and only after the CISD confirm bar
             if barstate.isconfirmed and bar_index > s.cisdEndIndex
                 s.icActive := true
@@ -968,6 +969,11 @@ registerRecord(C2Setup s) =>
     setupRecords.push(SetupRecord.new(s, bar_index))
     while showHistory > 0 and setupRecords.size() > showHistory
         evicted = setupRecords.shift()
+        // stop the evicted setup from ever drawing again (buySetup/sellSetup may still point to it)
+        evicted.setup.dead      := true
+        evicted.setup.phase     := 0
+        evicted.setup.icStopped := true
+        evicted.setup.icActive  := false
         deleteSetupVisuals(evicted.setup)
     earliestVisibleBar = setupRecords.size() > 0 ? setupRecords.first().creationBar : na
     pruneEarlyCisd(bullEarlyCisdRecords, earliestVisibleBar)
