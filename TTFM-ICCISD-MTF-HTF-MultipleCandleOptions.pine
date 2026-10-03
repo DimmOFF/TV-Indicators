@@ -1,204 +1,225 @@
 //@version=6
-indicator("FM° MTF HTF Options", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+indicator("TTFM° MTF HTF Options", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+//CONSTANTS
+COLOR_TXT = chart.fg_color
+COLOR_CHART_BG = chart.bg_color
+
 
 //#region [INPUTS]
 
 grpBias    = 'Overall Bias'
-biasFilter = input.string('Neutral', 'Bias', options = ['Neutral', 'Bearish', 'Bullish'], group = grpBias)
+biasFilter = input.string('Neutral', 'Bias', options = ['Neutral', 'Bearish', 'Bullish'], group = grpBias, display = display.none)
+
+grpAlerts   = 'Alerts'
+showAlerts = input.bool(true, 'Alerts?', group = grpAlerts, inline = 'alerts', tooltip = "To turn on the alerts, follow these steps:\n\n1) Make sure that the 'Alerts?' toggle is ON.\n2) Find, and click on, the three dots next to the indicator title on the top left of your chart, or right-click on the indicator on the chart.\n3) Click 'Add Alert on Fractal Model [Pro+]'\n4) Choose the Alert Name, if you wish, and confirm by clicking 'Create'")
+showEarlyCisdAlerts = input.bool(false, 'Early CISD Alerts?', group = grpAlerts, inline = 'alerts', tooltip = "The global 'Alerts?' toggle above acts as a master switch. If it is OFF, Early CISD alerts will not fire even if this toggle is ON.")
+showSweepC2Alerts = input.bool(false, 'C2 Closure Alerts?', group = grpAlerts, inline = 'alerts', tooltip = "Fires when a Candle 1 Sweep line is drawn together with a confirmed C2 close (i.e. a new C2 setup is created). The global 'Alerts?' toggle above acts as a master switch.")
+sweepC2AlertTemplate = input.string('{side} Sweep + C2 confirmed on {ticker}', 'C2 Closure Alert Message', group = grpAlerts, tooltip = "Customize the text sent by the Sweep+C2 alert. Placeholders:\n{side}   -> 'Bullish' or 'Bearish'\n{ticker} -> the chart's ticker symbol\n\nNote: because this script fires alerts via alert() rather than alertcondition(), the 'Message' box in TradingView's Create Alert dialog is ignored — edit the text here instead.", active = showSweepC2Alerts, display = display.none)
+showIcCisdAlerts = input.bool(true, 'IC-CISD Alerts?', group = grpAlerts, tooltip = "Fires when a protected swing (IC-CISD) is confirmed. The global 'Alerts?' toggle acts as a master switch.")
 
 grpModel   = 'General Settings'
-showAlerts = input.bool(true, 'Alerts?', group = grpModel, inline = 'alerts', tooltip = "To turn on the alerts, follow these steps:\n\n1) Make sure that the 'Alerts?' toggle is ON.\n2) Find, and click on, the three dots next to the indicator title on the top left of your chart, or right-click on the indicator on the chart.\n3) Click 'Add Alert on Fractal Model [Pro+]'\n4) Choose the Alert Name, if you wish, and confirm by clicking 'Create'")
-showEarlyCisdAlerts = input.bool(false, 'Early CISD Alerts?', group = grpModel, inline = 'alerts', tooltip = "The global 'Alerts?' toggle above acts as a master switch. If it is OFF, Early CISD alerts will not fire even if this toggle is ON.")
-showSweepC2Alerts = input.bool(false, 'C2 Closure Alerts?', group = grpModel, inline = 'alerts', tooltip = "Fires when a Candle 1 Sweep line is drawn together with a confirmed C2 close (i.e. a new C2 setup is created). The global 'Alerts?' toggle above acts as a master switch.")
-sweepC2AlertTemplate = input.string('{side} Sweep + C2 confirmed on {ticker}', 'C2 Closure Alert Message', group = grpModel, tooltip = "Customize the text sent by the Sweep+C2 alert. Placeholders:\n{side}   -> 'Bullish' or 'Bearish'\n{ticker} -> the chart's ticker symbol\n\nNote: because this script fires alerts via alert() rather than alertcondition(), the 'Message' box in TradingView's Create Alert dialog is ignored — edit the text here instead.", active = showSweepC2Alerts)
-showIcCisdAlerts = input.bool(true, 'IC-CISD Alerts?', group = grpModel, tooltip = "Fires when a protected swing (IC-CISD) is confirmed. The global 'Alerts?' toggle acts as a master switch.")
-showHistory = input.int(1, 'History', minval = 0, maxval = 40, group = grpModel, tooltip = 'Number of past setups (valid or invalidated) to keep drawn on the chart. 0 = unlimited.')
-modelType  = input.string('Auto', 'Fractal', options = ['Custom', 'Auto', '1m-15m', '2m-20m', '3m-30m', '5m-1H', '15m-4H', '30m-6H', '1H-1D', '2H-2D', '3H-3D', '4H-1W', '8H-2W', '12H-3W', '1D-1M', '2D-2M', '1W-3M', '2W-6M', '3W-9M', '1M-12M'], group = grpModel, inline = 'fractal')
+
+modelType  = input.string('Auto', 'Fractal        ', options = ['Custom', 'Auto', '1m-15m', '2m-20m', '3m-30m', '5m-1H', '15m-4H', '30m-6H', '1H-1D', '2H-2D', '3H-3D', '4H-1W', '8H-2W', '12H-3W', '1D-1M', '2D-2M', '1W-3M', '2W-6M', '3W-9M', '1M-12M'], group = grpModel, inline = 'fractal', display = display.none)
 showEarlyCisd = input.bool(true, 'Early CISD', group = grpModel, inline = 'fractal')
-customLTF  = input.timeframe('5',  'Custom LTF                      ', group = grpModel, inline = 'custom', active = modelType == 'Custom')
-customHTF  = input.timeframe('60', '', group = grpModel, inline = 'custom', tooltip = 'Only active when Alignment is set to Custom', active = modelType == 'Custom')
+customLTF  = input.timeframe('5',  'Custom LTF                      ', group = grpModel, inline = 'custom', active = modelType == 'Custom', display = display.none)
+customHTF  = input.timeframe('60', '', group = grpModel, inline = 'custom', tooltip = 'Only active when Alignment is set to Custom', active = modelType == 'Custom', display = display.none)
+showHistory = input.int(1, 'History', minval = 0, maxval = 40, group = grpModel, tooltip = 'Number of past setups (valid or invalidated) to keep drawn on the chart. 0 = unlimited.', display = display.none)
 
 grpCandles     = 'HTF Candles'
-htfCandleCount = input.int(5, 'HTF Candles', minval = 1, maxval = 10, group = grpCandles, inline = 'count')
-hideHtf        = input.bool(false, 'Hide?', group = grpCandles, inline = 'count', tooltip = 'Hide HTF candles preview')
-showHtf2 = input.bool(false, 'Show HTF Candle 2', group = grpCandles, inline = 'extrahtf')
-showHtf3 = input.bool(false, 'Show HTF Candle 3', group = grpCandles, inline = 'extrahtf')
-htf2CandleCount = input.int(5, 'HTF 2 Candles', minval = 1, maxval = 10, group = grpCandles, inline = 'extracount')
-htf3CandleCount = input.int(5, 'HTF 3 Candles', minval = 1, maxval = 10, group = grpCandles, inline = 'extracount')
-showHtf4H      = input.bool(false, 'Show 4H Candle', group = grpCandles, inline = 'dailyhtf')
-showHtfDaily = input.bool(false, 'Show Daily Candle', group = grpCandles, inline = 'dailyhtf')
-candleOffsetIn = input.int(0, 'Offset', minval = 0, group = grpCandles)
+showHtf        = input.bool(true, 'Show HTF Candles     ', group = grpCandles, inline = 'count')
+htfCandleCount = input.int(5, '', minval = 1, maxval = 10, group = grpCandles, inline = 'count', display = display.none)
+showHtf4H      = input.bool(false, '4H  ', group = grpCandles, inline = 'count')
+showHtfDaily = input.bool(true, 'D', group = grpCandles, inline = 'count')
 
-bullBody   = input.color(color.rgb(165, 214, 167), 'Body', group = grpCandles, inline = 'body')
-bearBody   = input.color(color.rgb(46, 46, 46), group = grpCandles, inline = 'body')
-borderBull = input.color(color.rgb(46, 46, 46), 'Borders', group = grpCandles, inline = 'border')
-borderBear = input.color(color.rgb(46, 46, 46), group = grpCandles, inline = 'border')
-wickBull   = input.color(color.rgb(46, 46, 46), 'Wick', group = grpCandles, inline = 'wick')
-wickBear   = input.color(color.rgb(46, 46, 46), group = grpCandles, inline = 'wick')
+showHtf2 = input.bool(false, 'Show HTF +1 Candles', group = grpCandles, inline = 'extrahtf2')
+htf2CandleCount = input.int(5, '', minval = 1, maxval = 10, group = grpCandles, inline = 'extrahtf2', display = display.none)
+showHtf3 = input.bool(false, 'Show HTF +2 Candles', group = grpCandles, inline = 'extraht3')
+htf3CandleCount = input.int(5, '', minval = 1, maxval = 10, group = grpCandles, inline = 'extraht3', display = display.none)
+candleOffsetIn = input.int(15, 'Offset', minval = 0, group = grpCandles, display = display.none)
 
-showHtfOpen  = input.bool(false, 'HTF Open', group = grpCandles, inline = 'htfopen')
-htfOpenColor = input.color(color.new(#1a1a1a, 30), '', group = grpCandles, inline = 'htfopen')
-htfOpenStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpCandles, inline = 'htfopen')
-htfOpenWidth = input.int(1, '', minval = 1, group = grpCandles, inline = 'htfopen')
+bullBody   = input.color(#6aa7a9, 'Body         ', group = grpCandles, inline = 'body')
+bearBody   = input.color(#4a4a4a, "    ", group = grpCandles, inline = 'body')
+borderBull = input.color(#4a4a4a, 'Border      ', group = grpCandles, inline = 'border')
+borderBear = input.color(#4a4a4a, "    ", group = grpCandles, inline = 'border')
+wickBull   = input.color(#4a4a4a, 'Wick         ', group = grpCandles, inline = 'wick')
+wickBear   = input.color(#4a4a4a, "    ", group = grpCandles, inline = 'wick')
 
+htfInfoColor  = input.color(#636363, '', group = grpCandles, inline = 'htfinfo')
 showHtfTf     = input.bool(true, 'HTF Info', group = grpCandles, inline = 'htfinfo', tooltip = 'Shows the higher timeframe label and/or a countdown to the close of the live HTF candle, centered above the block of HTF candles.')
 showHtfTimer  = input.bool(true, 'Countdown', group = grpCandles, inline = 'htfinfo')
-showHtfStamps = input.bool(false, 'Time Stamps', group = grpCandles, inline = 'htfinfo', tooltip = 'Shows the open time (or day name for daily+ candles) under each individual HTF candle.')
-htfInfoColor  = input.color(color.new(#1a1a1a, 0), '', group = grpCandles, inline = 'htfinfo')
+showHtfStamps = input.bool(true, 'Time Stamps', group = grpCandles, inline = 'htfinfo', tooltip = 'Shows the open time (or day name for daily+ candles) under each individual HTF candle.')
 
-showVlines = input.bool(false, 'O/C Time', group = grpCandles, inline = 'vline')
+
+htfOpenColor = input.color(color.new(#1a1a1a, 30), '', group = grpCandles, inline = 'htfopen')
+showHtfOpen  = input.bool(false, 'HTF Open', group = grpCandles, inline = 'htfopen')
+htfOpenStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpCandles, inline = 'htfopen', display = display.none)
+htfOpenWidth = input.int(1, 'Width', minval = 1, group = grpCandles, inline = 'htfopen', display = display.none)
+
 lineColor  = input.color(color.new(color.gray, 60), '', group = grpCandles, inline = 'vline')
-lineStyle  = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpCandles, inline = 'vline')
-lineWidth  = input.int(1, '', minval = 1, group = grpCandles, inline = 'vline')
+showVlines = input.bool(false, 'O/C Time', group = grpCandles, inline = 'vline')
+lineStyle  = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpCandles, inline = 'vline', display = display.none)
+lineWidth  = input.int(1, 'Width', minval = 1, group = grpCandles, inline = 'vline', display = display.none)
 
-showLH  = input.bool(false, 'L/H Lines', group = grpCandles, inline = 'lh')
 lhColor = input.color(color.new(#1a1a1a, 30), '', group = grpCandles, inline = 'lh')
-lhStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpCandles, inline = 'lh')
-lhWidth = input.int(1, '', minval = 1, group = grpCandles, inline = 'lh')
+showLH  = input.bool(false, 'L/H Lines', group = grpCandles, inline = 'lh')
+lhStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpCandles, inline = 'lh', display = display.none)
+lhWidth = input.int(1, 'Width', minval = 1, group = grpCandles, inline = 'lh', display = display.none)
 
 grpVisuals = 'Model Style'
-showLabels = input.bool(true, 'Labels?', group = grpVisuals, inline = 'lbl')
-labelSize  = input.string('Normal', '', group = grpVisuals, inline = 'lbl', options = ['Tiny', 'Small', 'Normal', 'Large', 'Huge'], active = showLabels)
-c2c3c4Color = input.color(color.new(#2e2e2e, 0), '', group = grpVisuals, inline = 'lbl', active = showLabels)
-showSweep  = input.bool(true, 'Candle 1 Sweep', group = grpVisuals, inline = 'sweep')
-sweepColor = input.color(color.new(#2e2e2e, 0), '', group = grpVisuals, inline = 'sweep')
-sweepStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'sweep')
-sweepWidth = input.int(1, '', minval = 1, group = grpVisuals, inline = 'sweep')
-sweepHistory = input.int(1, 'Sweep History', minval = 1, group = grpVisuals, inline = 'sweephist', tooltip = 'Number of most recent Candle 1 Sweep lines to keep on the chart')   // <-- new
+c2c3c4Color = input.color(color.new(#4da0cf, 30), '', group = grpVisuals, inline = 'lbl')
+showLabels = input.bool(true, 'Show TTFM Labels', group = grpVisuals, inline = 'lbl')
+labelSize  = input.string('Normal', '', group = grpVisuals, inline = 'lbl', options = ['Tiny', 'Small', 'Normal', 'Large', 'Huge'], active = showLabels, display = display.none)
 
-earlyCisdBullColor = input.color(color.new(#065da5, 0), 'Early CISD', group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd)
-earlyCisdBearColor = input.color(color.new(color.red, 0), '', group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd)
-earlyCisdStyle     = input.string('Dashed', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd)
-earlyCisdWidth     = input.int(1, '', minval = 1, group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd)
-
-showBullCisd  = input.bool(true, 'Bullish CISD', group = grpVisuals, inline = 'bullcisd')
 cisdBullColor = input.color(color.new(color.blue, 0), '', group = grpVisuals, inline = 'bullcisd')
-cisdBullStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'bullcisd', active = showBullCisd)
-cisdBullWidth = input.int(2, '', minval = 1, group = grpVisuals, inline = 'bullcisd', active = showBullCisd)
+showBullCisd  = input.bool(true, 'Bullish CISD          ', group = grpVisuals, inline = 'bullcisd')
+cisdBullStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'bullcisd', active = showBullCisd, display = display.none)
+cisdBullWidth = input.int(2, '', minval = 1, group = grpVisuals, inline = 'bullcisd', active = showBullCisd, display = display.none)
 
-showBearCisd  = input.bool(true, 'Bearish CISD', group = grpVisuals, inline = 'bearcisd')
 cisdBearColor = input.color(color.new(color.red, 0), '', group = grpVisuals, inline = 'bearcisd')
-cisdBearStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'bearcisd', active = showBearCisd)
-cisdBearWidth = input.int(2, '', minval = 1, group = grpVisuals, inline = 'bearcisd', active = showBearCisd)
+showBearCisd  = input.bool(true, 'Bearish CISD         ', group = grpVisuals, inline = 'bearcisd')
+cisdBearStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'bearcisd', active = showBearCisd, display = display.none)
+cisdBearWidth = input.int(2, '', minval = 1, group = grpVisuals, inline = 'bearcisd', active = showBearCisd, display = display.none)
 
+eqColor = input.color(#808080, '', group = grpVisuals, inline = 'eq')
+showEQ  = input.bool(true, 'Candle EQ            ', group = grpVisuals, inline = 'eq')
+eqStyle = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'eq', display = display.none)
+eqWidth = input.int(1, '', minval = 1, group = grpVisuals, inline = 'eq', display = display.none)
+
+sweepColor = input.color(color.new(#ff0000, 50), '', group = grpVisuals, inline = 'sweep')
+showSweep  = input.bool(true, 'Candle 1 Sweep    ', group = grpVisuals, inline = 'sweep')
+sweepStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'sweep', display = display.none)
+sweepWidth = input.int(1, '', minval = 1, group = grpVisuals, inline = 'sweep', display = display.none)
+
+earlyCisdBullColor = input.color(color.new(#065da5, 0), '', group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd)
+earlyCisdBearColor = input.color(color.new(color.red, 0), '', group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd)
+earlyCisdStyle     = input.string('Dashed', 'Early CISD         ', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd, display = display.none)
+earlyCisdWidth     = input.int(1, '', minval = 1, group = grpVisuals, inline = 'earlycisd', active = showEarlyCisd, display = display.none)
+
+sweepHistory = input.int(5, '   Sweep History       ', minval = 1, group = grpVisuals, inline = 'sweephist', tooltip = 'Number of most recent Candle 1 Sweep lines to keep on the chart', display = display.none)   // <-- new
 showIcCisd     = input.bool(true, 'Protected Swings (IC-CISD)', group = grpVisuals, inline = 'iccisd', tooltip = "After the main CISD confirms, watches for an opposite-colored candle. If price later closes back through that candle's open AND a 3-candle swing formed in between, the swing extreme is marked with a colored dot (blue = bullish, red = bearish) — a 'protected swing'. The dot turns grey once price trades back through it.")
-icCisdDotSize  = input.string('Small', 'Dot Size', options = ['Tiny', 'Small', 'Normal', 'Large', 'Huge'], group = grpVisuals, inline = 'iccisd', active = showIcCisd)
-
-showEQ  = input.bool(true, 'Candle Equilibrium', group = grpVisuals, inline = 'eq')
-eqColor = input.color(color.new(#000000, 0), '', group = grpVisuals, inline = 'eq')
-eqStyle = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpVisuals, inline = 'eq')
-eqWidth = input.int(1, '', minval = 1, group = grpVisuals, inline = 'eq')
+icCisdDotSize  = input.string('Small', 'Dot Size', options = ['Tiny', 'Small', 'Normal', 'Large', 'Huge'], group = grpVisuals, inline = 'iccisd', active = showIcCisd, display = display.none)
 
 showTSpot      = input.bool(true, 'T-Spot Box', group = grpVisuals, inline = 'tspot')
 tSpotBullColor = input.color(color.new(color.rgb(165, 214, 167), 80), '', group = grpVisuals, inline = 'tspot')
 tSpotBearColor = input.color(color.new(color.gray, 80), '', group = grpVisuals, inline = 'tspot')
 
-grpStdDev   = 'Deviations'
+grpStdDev   = 'STDIV Projection'
 showStdDev  = input.bool(true, 'Enable Projections?', group = grpStdDev, inline = 'stdb')
-stdDevInput = input.string('-1,-1.5,-2,-2.5, -4, -4.5', '', group = grpStdDev, inline = 'stdb', active = showStdDev)
-stdDevCalc  = input.string('Wick', 'Method', options = ['Wick', 'Body'], group = grpStdDev, inline = 'stdb', active = showStdDev)
-stdDevColor = input.color(color.new(#2e2e2e, 0), '', group = grpStdDev, inline = 'stdc', active = showStdDev)
-stdDevStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpStdDev, inline = 'stdc', active = showStdDev)
-stdDevWidth = input.int(1, '', minval = 1, group = grpStdDev, inline = 'stdc', active = showStdDev)
+stdDevInput = input.string('-1,-1.5,-2,-2.5,-4,-4.5', '', group = grpStdDev, inline = 'stdb', active = showStdDev, display = display.none)
+stdDevCalc  = input.string('Wick', 'Method', options = ['Wick', 'Body'], group = grpStdDev, inline = 'stdb', active = showStdDev, display = display.none)
+stdDevColor = input.color(#636363, '', group = grpStdDev, inline = 'stdc', active = showStdDev)
+stdDevStyle = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpStdDev, inline = 'stdc', active = showStdDev, display = display.none)
+stdDevWidth = input.int(1, '', minval = 1, group = grpStdDev, inline = 'stdc', active = showStdDev, display = display.none)
+stdDevStart     = input.string('CISD Bar', 'Start', options = ['C2 Bar', 'CISD Bar', 'Confirm Bar'], group = grpStdDev, inline = 'stdd', active = showStdDev, display = display.none)
+stdDevWidthMode = input.string('CISD Confirm', 'Width', options = ['Fixed', 'CISD Confirm'], group = grpStdDev, inline = 'stdd', active = showStdDev, display = display.none, tooltip = 'Fixed: zone length is the number of bars set in Fixed width.\nCISD Confirm: zone ends on the bar where CISD was confirmed.')
+stdDevBoxBars   = input.int(10, 'Fixed', minval = 1, group = grpStdDev, inline = 'stdd', active = showStdDev, display = display.none)
+stdDevLblOffset = input.int(1, 'Label offset (bars)', group = grpStdDev, inline = 'stde', active = showStdDev, display = display.none, tooltip = 'Shift of the labels relative to the zone start. Negative = left, positive = right.')
+stdZone1Color   = input.color(color.new(#d47686, 80), 'Zone 0 → 1', group = grpStdDev, inline = 'stdz', active = showStdDev)
+stdZone1Border  = color.new(#ff9800, 100) //input.color(color.new(#ff9800, 100), 'Border', group = grpStdDev, inline = 'stdz', active = showStdDev)
+stdZone2Color   = input.color(color.new(#787b86, 95), 'Zone 0 → Max', group = grpStdDev, inline = 'stdz', active = showStdDev)
+stdZone2Border  = color.new(#ff9800, 100) //input.color(color.new(#787b86, 100), 'Border', group = grpStdDev, inline = 'stdz', active = showStdDev)
 
 grpLiq       = 'Liquidity Levels (BSL/SSL)'
 showLiq      = input.bool(false, 'Show BSL/SSL', group = grpLiq)
-liqSwingLen  = input.int(5, 'Swing Length', minval = 1, group = grpLiq, tooltip = 'Bars on each side used to confirm a swing high/low')
-liqMaxLines  = input.int(5, 'Max Lines Per Side', minval = 1, maxval = 20, group = grpLiq)
+liqSwingLen  = input.int(5, 'Swing Length', minval = 1, group = grpLiq, tooltip = 'Bars on each side used to confirm a swing high/low', display = display.none)
+liqMaxLines  = input.int(5, 'Max Lines Per Side', minval = 1, maxval = 20, group = grpLiq, display = display.none)
 liqColor     = input.color(color.new(color.gray, 5), 'Line Color', group = grpLiq, inline = 'liqstyle')
-liqStyleStr  = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpLiq, inline = 'liqstyle')
-liqWidth     = input.int(1, '', minval = 1, group = grpLiq, inline = 'liqstyle')
+liqStyleStr  = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpLiq, inline = 'liqstyle', display = display.none)
+liqWidth     = input.int(1, '', minval = 1, group = grpLiq, inline = 'liqstyle', display = display.none)
 liqShowLabel = input.bool(true, 'Show Labels', group = grpLiq)
 liqShowPrice = input.bool(true, 'Show Price', group = grpLiq) 
 liqRemoveSwept = input.bool(true, 'Remove When Swept', group = grpLiq)
-liqLabelSize = input.string('Small', 'Label Size', options = ['Tiny', 'Small', 'Normal', 'Large'], group = grpLiq, active = liqShowLabel)
+liqLabelSize = input.string('Small', 'Label Size', options = ['Tiny', 'Small', 'Normal', 'Large'], group = grpLiq, active = liqShowLabel, display = display.none)
 
 // ---- NEW: Key Levels inputs ----
 grpKL        = 'Key Levels (PDH / PDL / Opens)'
-klShow       = input.bool(true, 'Show Key Levels', group = grpKL, tooltip = 'Intraday charts only. All times use the timezone selected below.')
-klTz         = input.string('America/New_York', 'Timezone', group = grpKL)
-klDayStart   = input.string('6 PM', 'Previous Day Starts At', options = ['Midnight', '6 PM'], group = grpKL, tooltip = "Defines what counts as a 'day' for PDH/PDL.\nMidnight = calendar day (00:00 - 23:59)\n6 PM = futures/forex session day (18:00 - 17:59)")
-klHistory    = input.int(1, 'Days To Keep', minval = 1, maxval = 20, group = grpKL, tooltip = 'How many past lines to keep per level. Older lines are frozen at the end of their day.')
+klShow       = input.bool(false, 'Show Key Levels', group = grpKL, tooltip = 'Intraday charts only. All times use the timezone selected below.')
+klTz         = input.string('America/New_York', 'Timezone', group = grpKL, display = display.none)
+klDayStart   = input.string('6 PM', 'Previous Day Starts At', options = ['Midnight', '6 PM'], group = grpKL, tooltip = "Defines what counts as a 'day' for PDH/PDL.\nMidnight = calendar day (00:00 - 23:59)\n6 PM = futures/forex session day (18:00 - 17:59)", display = display.none)
+klHistory    = input.int(1, 'Days To Keep', minval = 1, maxval = 20, group = grpKL, tooltip = 'How many past lines to keep per level. Older lines are frozen at the end of their day.', display = display.none)
 klShowLabel  = input.bool(true, 'Show Labels', group = grpKL, inline = 'kllbl')
 klShowPrice  = input.bool(true, 'Show Price', group = grpKL, inline = 'kllbl')
-klLabelSize  = input.string('Small', 'Label Size', options = ['Tiny', 'Small', 'Normal', 'Large'], group = grpKL)
+klLabelSize  = input.string('Small', 'Label Size', options = ['Tiny', 'Small', 'Normal', 'Large'], group = grpKL, display = display.none)
 
 showPDH  = input.bool(true, 'PDH', group = grpKL, inline = 'pdh')
 pdhColor = input.color(color.new(color.red, 0), '', group = grpKL, inline = 'pdh')
-pdhStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpKL, inline = 'pdh')
-pdhWidth = input.int(1, '', minval = 1, group = grpKL, inline = 'pdh')
+pdhStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpKL, inline = 'pdh', display = display.none)
+pdhWidth = input.int(1, '', minval = 1, group = grpKL, inline = 'pdh', display = display.none)
 
 showPDL  = input.bool(true, 'PDL', group = grpKL, inline = 'pdl')
 pdlColor = input.color(color.new(color.red, 0), '', group = grpKL, inline = 'pdl')
-pdlStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpKL, inline = 'pdl')
-pdlWidth = input.int(1, '', minval = 1, group = grpKL, inline = 'pdl')
+pdlStyle = input.string('Solid', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpKL, inline = 'pdl', display = display.none)
+pdlWidth = input.int(1, '', minval = 1, group = grpKL, inline = 'pdl', display = display.none)
 
 showMidOpen  = input.bool(true, 'Midnight Open', group = grpKL, inline = 'mid')
 midOpenColor = input.color(color.new(color.blue, 0), '', group = grpKL, inline = 'mid')
-midOpenStyle = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpKL, inline = 'mid')
-midOpenWidth = input.int(1, '', minval = 1, group = grpKL, inline = 'mid')
+midOpenStyle = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpKL, inline = 'mid', display = display.none)
+midOpenWidth = input.int(1, '', minval = 1, group = grpKL, inline = 'mid', display = display.none)
 
 showMktOpen  = input.bool(true, '6PM Open', group = grpKL, inline = 'mkt')
 mktOpenColor = input.color(color.new(color.red, 0), '', group = grpKL, inline = 'mkt')
-mktOpenStyle = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpKL, inline = 'mkt')
-mktOpenWidth = input.int(1, '', minval = 1, group = grpKL, inline = 'mkt')
+mktOpenStyle = input.string('Dotted', '', options = ['Solid', 'Dashed', 'Dotted'], group = grpKL, inline = 'mkt', display = display.none)
+mktOpenWidth = input.int(1, '', minval = 1, group = grpKL, inline = 'mkt', display = display.none)
 
 // ---- NEW: Session High/Low inputs ----
 grpSess     = 'Sessions (High / Low)'
-sessHistory = input.int(1, 'Sessions To Keep', minval = 1, maxval = 10, group = grpSess, tooltip = 'How many past sessions to keep per session. 1 = only the most recent Asia and the most recent London.')
-sessStyle   = input.string('Solid', 'Line Style', options = ['Solid', 'Dashed', 'Dotted'], group = grpSess, inline = 'sessln')
-sessWidth   = input.int(1, '', minval = 1, group = grpSess, inline = 'sessln')
+sessHistory = input.int(1, 'Sessions To Keep', minval = 1, maxval = 10, group = grpSess, tooltip = 'How many past sessions to keep per session. 1 = only the most recent Asia and the most recent London.', display = display.none)
+sessStyle   = input.string('Solid', 'Line Style', options = ['Solid', 'Dashed', 'Dotted'], group = grpSess, inline = 'sessln', display = display.none)
+sessWidth   = input.int(1, '', minval = 1, group = grpSess, inline = 'sessln', display = display.none)
 
-showSess1  = input.bool(true, '', group = grpSess, inline = 's1')
-sess1Name  = input.string('ASIA', '', group = grpSess, inline = 's1')
-sess1Time  = input.session('2000-0000', '', group = grpSess, inline = 's1', tooltip = 'Format is HHMM-HHMM in the Key Levels timezone. Sessions can cross midnight (e.g. 2000-0000).')
-sess1Color = input.color(color.purple, '', group = grpSess, inline = 's1')
+showSess1  = input.bool(false, '', group = grpSess, inline = 's1')
+sess1Name  = input.string('ASIA', '', group = grpSess, inline = 's1', display = display.none)
+sess1Time  = input.session('2000-0000', '', group = grpSess, inline = 's1', tooltip = 'Format is HHMM-HHMM in the Key Levels timezone. Sessions can cross midnight (e.g. 2000-0000).', display = display.none)
+sess1Color = input.color(#90bff980, '', group = grpSess, inline = 's1')
 
 showSess2  = input.bool(true, '', group = grpSess, inline = 's2')
-sess2Name  = input.string('LONDON', '', group = grpSess, inline = 's2')
-sess2Time  = input.session('0200-0700', '', group = grpSess, inline = 's2')
-sess2Color = input.color(color.teal, '', group = grpSess, inline = 's2')
+sess2Name  = input.string('LONDON', '', group = grpSess, inline = 's2', display = display.none)
+sess2Time  = input.session('0200-0700', '', group = grpSess, inline = 's2', display = display.none)
+sess2Color = input.color(#00897b80, '', group = grpSess, inline = 's2')
 // ---- END NEW ----
 
 var string GRP_SMT   = "SMT Divergence"
-
+ 
 // ============================================================
 // SMT SETTINGS
 // ============================================================
 show_smt           = input.bool(true, "Show SMT", group=GRP_SMT)
-smt_swingLen       = input.int(3, "Swing Length", minval=1, group=GRP_SMT)
-smt_lookback       = input.int(200, "Structure Lookback Bars", minval=10, group=GRP_SMT)
-smt_pairLagBars    = input.int(1, "Max Pair Swing Distance", minval=1, group=GRP_SMT)
-smt_mergeNearby    = input.bool(true, "Merge Nearby SMTs", group=GRP_SMT)
-smt_mergeBars      = input.int(12, "Merge Distance", minval=1, group=GRP_SMT)
-smt_deleteInvalid  = input.bool(false, "Delete Invalidated SMT", group=GRP_SMT)
-smt_invalOnClose   = input.bool(false, "Invalidate Only On Close", group=GRP_SMT)
+smt_swingLen       = input.int(3, "Swing Length", minval=1, group=GRP_SMT, display = display.none)
+smt_lookback       = input.int(200, "Structure Lookback Bars", minval=10, group=GRP_SMT, display = display.none)
+smt_pairLagBars    = input.int(1, "Max Pair Swing Distance", minval=1, group=GRP_SMT, display = display.none)
+smt_mergeNearby    = input.bool(true, "Merge Nearby SMTs", group=GRP_SMT, inline = "smtmrg")
+smt_mergeBars      = input.int(12, "      Merge Distance", minval=1, group=GRP_SMT, display = display.none, inline = "smtmrg")
+smt_deleteInvalid  = input.bool(true, "Delete Invalidated SMT   ", inline = "smt2", group=GRP_SMT)
+smt_invalOnClose   = input.bool(false, "Invalidate Only On Close", inline = "smt2", group=GRP_SMT)
 
 smt_minTicks           = 2.0
 smt_overlapBufferTicks = 2.0
 smt_avoidSwingOverlap  = true
 
-smt_lineColor = input.color(color.purple, "Color", group=GRP_SMT, inline="smtline")
-smt_lineWidth = input.int(1, "Width", minval=1, maxval=5, group=GRP_SMT, inline="smtline")
-smt_lineStyle = input.string("Solid", "Type", options=["Solid", "Dashed", "Dotted"], group=GRP_SMT, inline="smtline")
+smt_lineColor = input.color(#d47686a0, "", group=GRP_SMT, inline="smtline")
+smt_lineWidth = input.int(1, "Line", minval=1, maxval=5, group=GRP_SMT, inline="smtline", display = display.none)
+smt_lineStyle = input.string("Dotted", "Type", options=["Solid", "Dashed", "Dotted"], group=GRP_SMT, inline="smtline", display = display.none)
 
+smt_labelText  = input.color(#636363, "", group=GRP_SMT, inline="smtlabel")
 smt_showLabels = input.bool(true, "Label", group=GRP_SMT, inline="smtlabel")
-smt_labelBg    = input.color(color.new(color.white, 100), "BG", group=GRP_SMT, inline="smtlabel")
-smt_labelText  = input.color(color.black, "Text", group=GRP_SMT, inline="smtlabel")
-smt_labelSize  = input.string("Small", "Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=GRP_SMT, inline="smtlabel")
+smt_labelBg    = color.new(color.white, 100) //input.color(color.new(color.white, 100), "BG", group=GRP_SMT, inline="smtlabel")
 
-smt_useSecondPair = input.bool(false, "Use Second Comparison Symbol", group=GRP_SMT, inline="smtpair2")
-smt_secondPair    = input.symbol("CBOT_MINI:YM1!", "Second Comparison Symbol", group=GRP_SMT, inline="smtpair2")
+smt_labelSize  = input.string("Small", "   Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=GRP_SMT, inline="smtlabel", display = display.none)
+
+smt_useSecondPair = input.bool(false, "Second Comparison", group=GRP_SMT, inline="smtpair2")
+smt_secondPair    = input.symbol("PEPPERSTONE:US30F", "", group=GRP_SMT, inline="smtpair2", display = display.none)
+smt_secondPairInv = input.bool(false, "Inverse", group=GRP_SMT, inline="smtpair2", tooltip="Enable if the second comparison symbol is inversely correlated with the chart symbol (e.g. EURUSD vs DXY).")
 
 grpDash = 'Table Info Settings'
 tbl_show         = input.bool(true,  'Show?',        inline = 'tbl_show', group = grpDash)
-tbl_bg_color     = input.color(color.new(#ffffff, 0), '', inline = 'tbl_show', group = grpDash)
-tbl_text_color   = input.color(color.new(#131722, 0), '', inline = 'tbl_show', group = grpDash)
+tbl_bg_color     = color.new(COLOR_CHART_BG, 20)
+tbl_text_color   = color.new(COLOR_TXT, 20)
 tbl_hide_border  = input.bool(false, 'Hide Border?', inline = 'tbl_show', group = grpDash)
 
-tbl_pos_vert     = input.string('Bottom', '',   options = ['Top', 'Middle', 'Bottom'], inline = 'tbl_pos', group = grpDash)
-tbl_pos_horiz    = input.string('Right', '', options = ['Left', 'Center', 'Right'], inline = 'tbl_pos', group = grpDash)
-tbl_text_size    = input.string('Small', '', options = ['Tiny', 'Small', 'Normal', 'Large'], inline = 'tbl_pos', group = grpDash)
+tbl_pos_vert     = input.string('Bottom', '',   options = ['Top', 'Middle', 'Bottom'], inline = 'tbl_pos', group = grpDash, display = display.none)
+tbl_pos_horiz    = input.string('Right', '', options = ['Left', 'Center', 'Right'], inline = 'tbl_pos', group = grpDash, display = display.none)
+tbl_text_size    = input.string('Small', '', options = ['Tiny', 'Small', 'Normal', 'Large'], inline = 'tbl_pos', group = grpDash, display = display.none)
 
 tbl_show_bias    = input.bool(false, 'Bias?',    inline = 'tbl_rows', group = grpDash)
 tbl_show_symbol  = input.bool(true,  'Symbol?',  inline = 'tbl_rows', group = grpDash)
@@ -247,6 +268,7 @@ type PeriodState
 type StdDevData
     array<line>  lines
     array<label> labels
+    array<box>   boxes
 
 type ICCisd
     float level
@@ -337,8 +359,15 @@ allowSell = biasFilter != 'Bullish'
 // pair symbol is available in time to be shown in the Table Info dashboard.
 smt_ticker = str.upper(syminfo.ticker)
 
+// Auto-detected comparison symbol for SMT.
+// inverse = true when the pair is inversely correlated with the chart symbol (e.g. EURUSD vs DXY).
+type SmtPair
+    string symbol  = ""
+    bool   inverse = false
+
 f_smt_pair_registry(string _ticker) =>
-    string p = ""
+    string p   = ""
+    bool   inv = false
 
     // Index futures / micros
     if str.contains(_ticker, "MES")
@@ -358,6 +387,18 @@ f_smt_pair_registry(string _ticker) =>
     else if str.contains(_ticker, "RTY")
         p := "ES1!"
 
+    // Index cisdBearFiredThisBar
+    else if str.contains(_ticker, "NAS")  or str.contains(_ticker, "USTEC") or str.contains(_ticker, "US100")
+        p := "VANTAGE:SP500FT"
+    else if str.contains(_ticker, "US30")  or str.contains(_ticker, "DJ30")
+        p := "VANTAGE:SP500FT"
+    else if str.contains(_ticker, "SPX")  or str.contains(_ticker, "SP500")
+        p := "VANTAGE:NAS100FT"
+    else if str.contains(_ticker, "GER40")  or str.contains(_ticker, "DAX")
+        p := "VANTAGE:EU50"
+    else if str.contains(_ticker, "EUSTX50")  or str.contains(_ticker, "EU50") or str.contains(_ticker, "STX50")
+        p := "PEPPERSTONE:GER40F"
+
     // Crypto futures
     else if str.contains(_ticker, "BTC")
         p := "ETH1!"
@@ -374,10 +415,31 @@ f_smt_pair_registry(string _ticker) =>
     else if str.contains(_ticker, "SI")
         p := "GC1!"
 
-    p
+    // Metals CFD
+    else if str.contains(_ticker, "XAU") or str.contains(_ticker, "GOLD")
+        p := "BLACKBULL:SILVER.F"
+    else if str.contains(_ticker, "XAG") or str.contains(_ticker, "SILVER")
+        p := "BLACKBULL:GOLD.F"
 
-smt_pair1 = f_smt_pair_registry(smt_ticker)
-smt_pair2 = smt_useSecondPair ? smt_secondPair : ""
+    // Forex vs Dollar Index
+    // USD is the quote currency -> inverse correlation with DXY
+    else if str.contains(_ticker, "EURUSD") or str.contains(_ticker, "GBPUSD") or str.contains(_ticker, "AUDUSD") or str.contains(_ticker, "NZDUSD")
+        p   := "TVC:DXY"
+        inv := true
+    // USD is the base currency -> direct correlation with DXY
+    else if str.contains(_ticker, "USDJPY") or str.contains(_ticker, "USDCAD") or str.contains(_ticker, "USDCHF")
+        p := "TVC:DXY"
+    // DXY itself -> inverse pair
+    else if str.contains(_ticker, "DXY")
+        p   := "FX:EURUSD"
+        inv := true
+    SmtPair.new(p, inv)
+
+smt_autoPair = f_smt_pair_registry(smt_ticker)
+smt_pair1    = smt_autoPair.symbol
+smt_pair1Inv = smt_autoPair.inverse
+smt_pair2    = smt_useSecondPair ? smt_secondPair : ""
+smt_pair2Inv = smt_useSecondPair and smt_secondPairInv
 
 var array<line>  bslLines   = array.new<line>()
 var array<label> bslLabels  = array.new<label>()
@@ -748,17 +810,49 @@ createStdDevProjections(C2Setup s, int confirmBar) =>
                         level1 := s.isBull ? math.min(open[j], close[j]) : math.max(open[j], close[j])
                         break
 
-            rightBar   = s.c2BarIndex
+            int startBar = switch stdDevStart
+                'CISD Bar'    => s.cisdIndex
+                'Confirm Bar' => confirmBar
+                =>               s.c2BarIndex
+            int endBar = stdDevWidthMode == 'CISD Confirm' ? math.max(confirmBar, startBar + 1) : startBar + stdDevBoxBars
+            lblBar     = startBar + stdDevLblOffset
             priceRange = s.isBull ? level0 - level1 : level1 - level0
             lns        = array.new<line>()
             lbs        = array.new<label>()
+            bxs        = array.new<box>()
 
+            // farthest deviation level -> upper/lower edge of the second zone
+            float farPrice = level0
+            float farAbs   = 0.0
             for dev in devs
                 devPrice = s.isBull ? level0 - priceRange * dev : level0 + priceRange * dev
-                if showLabels
-                    lbs.push(label.new(rightBar, devPrice, str.tostring(dev), xloc = xloc.bar_index, style = label.style_label_center, color = na, textcolor = stdDevColor, size = textSize(labelSize), text_font_family = font.family_default))
+                if math.abs(devPrice - level0) > farAbs
+                    farAbs   := math.abs(devPrice - level0)
+                    farPrice := devPrice
 
-            s.stdDevData := StdDevData.new(lns, lbs)
+            // zone 2: 0 -> farthest deviation (drawn first, so zone 1 sits on top)
+            bxs.push(box.new(startBar, math.max(level0, farPrice), endBar, math.min(level0, farPrice), xloc = xloc.bar_index, border_color = stdZone2Border, bgcolor = stdZone2Color))
+            // zone 1: 0 -> 1
+            bxs.push(box.new(startBar, math.max(level0, level1), endBar, math.min(level0, level1), xloc = xloc.bar_index, border_color = stdZone1Border, bgcolor = stdZone1Color))
+
+            // level lines + labels: 0, 1 and every deviation
+            levelPrices = array.new<float>()
+            levelTexts  = array.new<string>()
+            levelPrices.push(level0)
+            levelTexts.push('0')
+            levelPrices.push(level1)
+            levelTexts.push('1')
+            for dev in devs
+                levelPrices.push(s.isBull ? level0 - priceRange * dev : level0 + priceRange * dev)
+                levelTexts.push(str.tostring(dev))
+
+            for i = 0 to levelPrices.size() - 1
+                lvl = levelPrices.get(i)
+                lns.push(line.new(startBar, lvl, endBar, lvl, xloc = xloc.bar_index, color = stdDevColor, style = lineStyleFromStr(stdDevStyle), width = stdDevWidth))
+                if showLabels
+                    lbs.push(label.new(lblBar, lvl, levelTexts.get(i), xloc = xloc.bar_index, style = label.style_none, color = na, textcolor = stdDevColor, size = textSize(labelSize), text_font_family = font.family_default))
+
+            s.stdDevData := StdDevData.new(lns, lbs, bxs)
 
 confirmCisd(C2Setup s, int confirmBar, bool live = true) =>
     s.cisdConfirmed := true
@@ -990,7 +1084,10 @@ deleteSetupVisuals(C2Setup s) =>
             if not na(s.stdDevData.labels)
                 for lb in s.stdDevData.labels
                     label.delete(lb)
-        
+            if not na(s.stdDevData.boxes)
+                for bx in s.stdDevData.boxes
+                    box.delete(bx)
+
 registerRecord(C2Setup s) =>
     setupRecords.push(SetupRecord.new(s, bar_index))
     while showHistory > 0 and setupRecords.size() > showHistory
@@ -1089,6 +1186,9 @@ method deleteStdDev(C2Setup s) =>
         if not na(s.stdDevData.labels)
             for lb in s.stdDevData.labels
                 label.delete(lb)
+        if not na(s.stdDevData.boxes)
+            for bx in s.stdDevData.boxes
+                box.delete(bx)
         s.stdDevData := na
     s
 
@@ -1615,7 +1715,7 @@ processSession(sess2, sess2In, sess2Start, showSess2 and klShow, sess2Name, sess
 
 //#region [PLOT]
 
-if (barstate.islast or barstate.isrealtime) and validTf and htfCandles.size() > 0 and not hideHtf
+if (barstate.islast or barstate.isrealtime) and validTf and htfCandles.size() > 0 and showHtf
     n = htfCandles.size()
     for i = n - 1 to 0
         htfCandles.get(i).draw(bar_index + candleOffset + candleSpacing * (n - 1 - i), autoTf)
@@ -1843,7 +1943,7 @@ if barstate.islast and tbl_show
         row += 1
 
     if tbl_show_smt
-        smtDisp = not show_smt ? 'SMT: Off' : smt_pair1 == '' ? 'SMT: n/a' : 'SMT: ' + str.replace_all(smt_pair1, '1!', '')
+        smtDisp = not show_smt ? 'SMT: Off' : smt_pair1 == '' ? 'SMT: n/a' : 'SMT: ' + str.replace_all(smt_pair1, '1!', '') + (smt_pair1Inv ? ' (inv)' : '')
         table.cell(wm, 0, row, smtDisp, text_color = tbl_text_color, bgcolor = tbl_bg_color, text_size = tbl_sz, text_halign = text.align_center, text_font_family = font.family_default)
 
 if not tbl_show and not na(wm)
@@ -1853,20 +1953,22 @@ if not tbl_show and not na(wm)
 // ============================================================
 // SMT DIVERGENCE ENGINE -- Auto Pair + Optional Second Pair
 // ============================================================
-if show_smt and smt_pair1 == ""
-    runtime.error("No SMT auto pair detected for this chart symbol.")
+// No auto pair found for this chart symbol -> the first pair is simply skipped (no error).
+// If the second comparison symbol is enabled it keeps working; otherwise SMT stays silent.
+smt_p1On = show_smt and smt_pair1 != ""
+smt_p2On = show_smt and smt_useSecondPair
 
-smt_p1High = show_smt ? request.security(smt_pair1, timeframe.period, high) : na
-smt_p1Low  = show_smt ? request.security(smt_pair1, timeframe.period, low) : na
-smt_p2High = show_smt and smt_useSecondPair ? request.security(smt_pair2, timeframe.period, high) : na
-smt_p2Low  = show_smt and smt_useSecondPair ? request.security(smt_pair2, timeframe.period, low) : na
+smt_p1High = smt_p1On ? request.security(smt_pair1, timeframe.period, high) : na
+smt_p1Low  = smt_p1On ? request.security(smt_pair1, timeframe.period, low) : na
+smt_p2High = smt_p2On ? request.security(smt_pair2, timeframe.period, high) : na
+smt_p2Low  = smt_p2On ? request.security(smt_pair2, timeframe.period, low) : na
 
 smt_cPH  = show_smt ? ta.pivothigh(high, smt_swingLen, smt_swingLen) : na
 smt_cPL  = show_smt ? ta.pivotlow(low, smt_swingLen, smt_swingLen) : na
-smt_p1PH = show_smt ? ta.pivothigh(smt_p1High, smt_swingLen, smt_swingLen) : na
-smt_p1PL = show_smt ? ta.pivotlow(smt_p1Low, smt_swingLen, smt_swingLen) : na
-smt_p2PH = show_smt and smt_useSecondPair ? ta.pivothigh(smt_p2High, smt_swingLen, smt_swingLen) : na
-smt_p2PL = show_smt and smt_useSecondPair ? ta.pivotlow(smt_p2Low, smt_swingLen, smt_swingLen) : na
+smt_p1PH = smt_p1On ? ta.pivothigh(smt_p1High, smt_swingLen, smt_swingLen) : na
+smt_p1PL = smt_p1On ? ta.pivotlow(smt_p1Low, smt_swingLen, smt_swingLen) : na
+smt_p2PH = smt_p2On ? ta.pivothigh(smt_p2High, smt_swingLen, smt_swingLen) : na
+smt_p2PL = smt_p2On ? ta.pivotlow(smt_p2Low, smt_swingLen, smt_swingLen) : na
 
 smt_pivotBar = bar_index - smt_swingLen
 
@@ -2007,7 +2109,9 @@ if show_smt and smt_useSecondPair and not na(smt_p2PL)
     array.push(smt_p2Lows, smt_p2PL)
     array.push(smt_p2LowBars, smt_pivotBar)
 
-f_smt_detect_bearish(float _curChartHigh, int _curChartBar, array<float> _pHighs, array<int> _pHighBars) =>
+// _inv = true: the pair is inversely correlated. The caller then passes the pair's LOWS as _pHighs
+// (a chart higher-high is expected to coincide with a pair lower-low).
+f_smt_detect_bearish(float _curChartHigh, int _curChartBar, array<float> _pHighs, array<int> _pHighBars, bool _inv = false) =>
     if array.size(smt_cHighs) > 0 and array.size(_pHighs) > 1
         [curPairHigh, curPairBar] = f_smt_nearest(_pHighBars, _pHighs, _curChartBar, smt_pairLagBars)
 
@@ -2025,7 +2129,7 @@ f_smt_detect_bearish(float _curChartHigh, int _curChartBar, array<float> _pHighs
 
                     if not na(refPairHigh)
                         bool chartBreak = _curChartHigh > refChartHigh
-                        bool pairBreak  = curPairHigh > refPairHigh
+                        bool pairBreak  = _inv ? curPairHigh < refPairHigh : curPairHigh > refPairHigh
 
                         if chartBreak != pairBreak
                             float pairMoveScore = math.abs(curPairHigh - refPairHigh) / syminfo.mintick
@@ -2039,7 +2143,8 @@ f_smt_detect_bearish(float _curChartHigh, int _curChartBar, array<float> _pHighs
             if not na(bestScore)
                 f_smt_add("Bearish", bestBar, bestPrice, _curChartBar, _curChartHigh, bestScore)
 
-f_smt_detect_bullish(float _curChartLow, int _curChartBar, array<float> _pLows, array<int> _pLowBars) =>
+// _inv = true: the caller passes the pair's HIGHS as _pLows (a chart lower-low is expected to coincide with a pair higher-high).
+f_smt_detect_bullish(float _curChartLow, int _curChartBar, array<float> _pLows, array<int> _pLowBars, bool _inv = false) =>
     if array.size(smt_cLows) > 0 and array.size(_pLows) > 1
         [curPairLow, curPairBar] = f_smt_nearest(_pLowBars, _pLows, _curChartBar, smt_pairLagBars)
 
@@ -2057,7 +2162,7 @@ f_smt_detect_bullish(float _curChartLow, int _curChartBar, array<float> _pLows, 
 
                     if not na(refPairLow)
                         bool chartBreak = _curChartLow < refChartLow
-                        bool pairBreak  = curPairLow < refPairLow
+                        bool pairBreak  = _inv ? curPairLow > refPairLow : curPairLow < refPairLow
 
                         if chartBreak != pairBreak
                             float pairMoveScore = math.abs(curPairLow - refPairLow) / syminfo.mintick
@@ -2072,14 +2177,14 @@ f_smt_detect_bullish(float _curChartLow, int _curChartBar, array<float> _pLows, 
                 f_smt_add("Bullish", bestBar, bestPrice, _curChartBar, _curChartLow, bestScore)
 
 if show_smt and not na(smt_cPH)
-    f_smt_detect_bearish(smt_cPH, smt_pivotBar, smt_p1Highs, smt_p1HighBars)
+    f_smt_detect_bearish(smt_cPH, smt_pivotBar, smt_pair1Inv ? smt_p1Lows : smt_p1Highs, smt_pair1Inv ? smt_p1LowBars : smt_p1HighBars, smt_pair1Inv)
     if smt_useSecondPair
-        f_smt_detect_bearish(smt_cPH, smt_pivotBar, smt_p2Highs, smt_p2HighBars)
+        f_smt_detect_bearish(smt_cPH, smt_pivotBar, smt_pair2Inv ? smt_p2Lows : smt_p2Highs, smt_pair2Inv ? smt_p2LowBars : smt_p2HighBars, smt_pair2Inv)
 
 if show_smt and not na(smt_cPL)
-    f_smt_detect_bullish(smt_cPL, smt_pivotBar, smt_p1Lows, smt_p1LowBars)
+    f_smt_detect_bullish(smt_cPL, smt_pivotBar, smt_pair1Inv ? smt_p1Highs : smt_p1Lows, smt_pair1Inv ? smt_p1HighBars : smt_p1LowBars, smt_pair1Inv)
     if smt_useSecondPair
-        f_smt_detect_bullish(smt_cPL, smt_pivotBar, smt_p2Lows, smt_p2LowBars)
+        f_smt_detect_bullish(smt_cPL, smt_pivotBar, smt_pair2Inv ? smt_p2Highs : smt_p2Lows, smt_pair2Inv ? smt_p2HighBars : smt_p2LowBars, smt_pair2Inv)
 
 if show_smt and not na(smt_cPH)
     array.push(smt_cHighs, smt_cPH)
