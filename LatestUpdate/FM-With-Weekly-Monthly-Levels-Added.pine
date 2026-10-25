@@ -484,6 +484,16 @@ smt_pair2 = smt_useSecondPair ? smt_secondPair : ""
 
 //#region [FUNCTIONS]
 
+customTfLabel(string tf) =>
+    float  mins   = str.tonumber(tf)
+    string result = tf
+    if not na(mins)
+        if mins >= 60 and mins % 60 == 0
+            result := str.tostring(int(mins / 60)) + 'H'
+        else
+            result := str.tostring(int(mins)) + 'm'
+    result
+
 tfLabel(string tf) =>
     switch tf
         '1'   => '1m'
@@ -513,7 +523,7 @@ tfLabel(string tf) =>
         '6M'  => '6M'
         '9M'  => '9M'
         '12M' => '12M'
-        =>       tf + 'm'
+        =>       customTfLabel(tf)
 
 tfMins(string tf) =>
     switch tf
